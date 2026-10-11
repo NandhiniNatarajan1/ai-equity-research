@@ -83,9 +83,10 @@ def _heuristic_route(question: str) -> RouteDecision | None:
 
 
 def _llm_route(question: str) -> RouteDecision:
+    # Router picks 1 of 2 routes — mechanical, use the cheap model.
     s = get_settings()
     llm = ChatAnthropic(
-        model=s.anthropic_model,
+        model=s.anthropic_fast_model,
         api_key=s.anthropic_api_key.get_secret_value(),
         max_tokens=256,
     )

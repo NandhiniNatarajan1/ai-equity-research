@@ -102,7 +102,7 @@ class AgentState:
     answer: AgentAnswer | None = None
 
 
-def _llm(model: str | None = None) -> ChatAnthropic:
+def _llm(model: str | None = None, *, max_tokens: int = 4096) -> ChatAnthropic:
     s = get_settings()
     # NOTE: claude-sonnet-5-5 does not accept a non-default temperature;
     # we deliberately omit it rather than hardcoding a value.
@@ -111,8 +111,13 @@ def _llm(model: str | None = None) -> ChatAnthropic:
         api_key=s.anthropic_api_key.get_secret_value(),
         # Composer needs headroom for multi-citation JSON (quoted spans + markdown).
         # 2048 was clipping mid-string on 5-citation answers.
-        max_tokens=4096,
+        max_tokens=max_tokens,
     )
+
+
+def _fast_llm(max_tokens: int = 1024) -> ChatAnthropic:
+    """Cheaper/faster model for mechanical steps (planner, router)."""
+    return _llm(model=get_settings().anthropic_fast_model, max_tokens=max_tokens)
 
 
 def _extract_text(content: Any) -> str:
@@ -176,7 +181,8 @@ def _parse_json_block(text: str) -> dict[str, Any]:
 
 
 def plan_retrieval(state: AgentState) -> AgentState:
-    llm = _llm()
+    # Planner is a mechanical step (produce 3 queries) — use the cheaper model.
+    llm = _fast_llm(max_tokens=1024)
     msgs = [
         SystemMessage(content=RETRIEVAL_PLANNER_SYSTEM),
         HumanMessage(
@@ -198,8 +204,10 @@ def run_retrieval(state: AgentState) -> AgentState:
     for q in state.plan.get("queries", []):
         query = str(q.get("query") or state.question)
         item_codes = q.get("item_codes") or None
+        # k=4 keeps composer input around ~3-4k tokens of passages instead of
+        # ~6k with k=6; 3 queries still give good recall after dedup.
         results = search_filings(
-            state.ticker, query, k=6, item_codes=item_codes if item_codes else None
+            state.ticker, query, k=4, item_codes=item_codes if item_codes else None
         )
         chunk_ids = [r["chunk_id"] for r in results]
         state.tool_calls.append(

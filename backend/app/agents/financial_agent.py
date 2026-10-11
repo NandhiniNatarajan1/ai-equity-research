@@ -65,9 +65,11 @@ class FinancialAgentState:
 
 
 def _llm() -> ChatAnthropic:
+    # Narrator is a mechanical step (read structured metrics, write a short
+    # paragraph) — use the fast/cheap model.
     s = get_settings()
     return ChatAnthropic(
-        model=s.anthropic_model,
+        model=s.anthropic_fast_model,
         api_key=s.anthropic_api_key.get_secret_value(),
         max_tokens=2048,
     )

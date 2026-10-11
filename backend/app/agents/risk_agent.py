@@ -98,11 +98,13 @@ class RiskAgentState:
 def _llm() -> ChatAnthropic:
     s = get_settings()
     return ChatAnthropic(
-        model=s.anthropic_model,
+        model=s.anthropic_model,  # keep Sonnet — nuanced severity ranking
         api_key=s.anthropic_api_key.get_secret_value(),
-        # 7 themes with multiple citations each easily exceeds 4k tokens;
-        # observed 7.4k-char truncation in the wild.
-        max_tokens=8192,
+        # 6144 fits typical 5-7 themes with multiple citations each.
+        # (The earlier 7.4k-char truncation observed with max_tokens=4096
+        # was ~2k tokens of output; the real cause was the prompt + response
+        # together exceeding the budget. 6144 is a comfortable ceiling.)
+        max_tokens=6144,
     )
 
 
@@ -156,7 +158,9 @@ def fetch_risk_passages(state: RiskAgentState) -> RiskAgentState:
     """Scan each known risk theme to ensure broad coverage; dedup by chunk_id."""
     seen: dict[str, dict[str, Any]] = {}
     for _, query in RISK_THEMES:
-        results = search_filings(state.ticker, query, k=4, item_codes=["1A"])
+        # k=3 keeps the combined input (8 themes × 3 ≈ 24 chunks after dedup)
+        # at a sane size without missing the top-ranked passage per theme.
+        results = search_filings(state.ticker, query, k=3, item_codes=["1A"])
         chunk_ids = [r["chunk_id"] for r in results]
         state.tool_calls.append(
             ToolCallRecord(

@@ -32,7 +32,12 @@ class Settings(BaseSettings):
     sec_rate_limit_per_sec: int = 8
 
     anthropic_api_key: SecretStr = SecretStr("")
+    # High-quality model for final composition / nuanced ranking.
     anthropic_model: str = "claude-sonnet-5-5"
+    # Cheaper, faster model for mechanical steps (router, planner, narration
+    # of pre-computed data, cross-summary of pre-made answers).
+    # Costs ~3x less than Sonnet; set to the same model to disable the split.
+    anthropic_fast_model: str = "claude-haiku-5-5"
     anthropic_verification_model: str = "claude-opus-5-5"
 
     embedding_provider: Literal["voyage", "openai"] = "voyage"

@@ -68,9 +68,11 @@ class CompetitorAgentState:
 
 
 def _llm() -> ChatAnthropic:
+    # Comparator summarizes 3 pre-made peer answers — mechanical step, use
+    # the fast/cheap model.
     s = get_settings()
     return ChatAnthropic(
-        model=s.anthropic_model,
+        model=s.anthropic_fast_model,
         api_key=s.anthropic_api_key.get_secret_value(),
         max_tokens=4096,
     )

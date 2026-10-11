@@ -14,17 +14,18 @@ import html as html_lib
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
-from app.agents.report_agent import ReportResult, generate_report
+from app.agents.report_agent import ReportResult
+from app.agents.report_cache import get_or_generate, invalidate
 from app.core.logging import get_logger
 
 router = APIRouter(prefix="/research", tags=["report"])
 log = get_logger("api.report")
 
 
-def _report_to_dict(r: ReportResult) -> dict[str, Any]:
+def _report_to_dict(r: ReportResult, cache_meta: dict[str, Any] | None = None) -> dict[str, Any]:
     def _specialist(name: str, state: Any) -> dict[str, Any]:
         if state is None:
             return {"available": False}
@@ -51,9 +52,10 @@ def _report_to_dict(r: ReportResult) -> dict[str, Any]:
             "error": getattr(state, "error", None),
         }
 
-    return {
+    out: dict[str, Any] = {
         "ticker": r.ticker,
-        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+        "generated_at": (cache_meta or {}).get("generated_at")
+        or datetime.now(tz=timezone.utc).isoformat(),
         "report_markdown": r.report_markdown,
         "specialists": {
             "business": _specialist("business", r.specialists.business),
@@ -68,6 +70,9 @@ def _report_to_dict(r: ReportResult) -> dict[str, Any]:
         ],
         "financial_metrics": r.financial_metrics,
     }
+    if cache_meta is not None:
+        out["cache"] = cache_meta
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -234,12 +239,16 @@ def _metrics_table(result: dict[str, Any]) -> str:
 
 
 @router.get("/report/{ticker}.html", response_class=HTMLResponse)
-def report_html(ticker: str) -> HTMLResponse:
+def report_html(
+    ticker: str,
+    refresh: bool = Query(default=False, description="Bypass the report cache"),
+) -> HTMLResponse:
     try:
-        result = _report_to_dict(generate_report(ticker))
+        res, meta = get_or_generate(ticker, force_refresh=refresh)
     except LookupError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    result = _report_to_dict(res, cache_meta=meta)
     body = _markdown_to_html(result.get("report_markdown", ""))
     html = HTML_SHELL.format(
         ticker=html_lib.escape(result["ticker"]),
@@ -252,8 +261,19 @@ def report_html(ticker: str) -> HTMLResponse:
 
 
 @router.get("/report/{ticker}")
-def report_json(ticker: str) -> dict[str, Any]:
+def report_json(
+    ticker: str,
+    refresh: bool = Query(default=False, description="Bypass the report cache"),
+) -> dict[str, Any]:
     try:
-        return _report_to_dict(generate_report(ticker))
+        res, meta = get_or_generate(ticker, force_refresh=refresh)
     except LookupError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _report_to_dict(res, cache_meta=meta)
+
+
+@router.delete("/report/{ticker}")
+def report_invalidate(ticker: str) -> dict[str, Any]:
+    """Drop any cached reports for `ticker`. Next GET regenerates."""
+    removed = invalidate(ticker)
+    return {"ticker": ticker.upper(), "removed": removed}
