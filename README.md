@@ -85,10 +85,10 @@ docker compose -f infra/docker-compose.yml exec api alembic upgrade head
 
 # 4. Ingest the three MVP tickers
 docker compose -f infra/docker-compose.yml exec api `
-    python -m app.ingestion.cli ingest NVDA AMD INTC
+    python -m app.ingestion.cli NVDA AMD INTC
 
 # 5. Open the dashboard
-start http://localhost:3000
+start http://localhost:3001
 ```
 
 ## Running tests
@@ -102,6 +102,26 @@ cd backend
 The unit suite (18 tests) covers the parser, chunker, EDGAR client, and
 citation-integrity validator. The eval suite (10 questions) runs the full
 LangGraph agent against the ingested filings — it costs real tokens.
+
+### Eval results (2026-10-11)
+
+Model: Claude Sonnet 5.5 • Embeddings: voyage-3 (1024-dim) • pgvector HNSW
+
+- **10 / 10 passed** in ~103 s (~$0.20 of Anthropic tokens)
+- 8 answered questions: plan → retrieve → compose all produced verified
+  citations into expected 10-K Item sections
+- 2 math-shaped questions (NVDA FCF margin, INTC revenue growth) correctly
+  returned `deferred=true` — the agent routes these to the (not-yet-shipped)
+  Financial Agent instead of hallucinating a number
+- Zero citation-integrity rejections: every claimed `chunk_id` was in that
+  run's retrieval set, and every quoted span fuzzy-matched its chunk text
+
+Also fix the ingest CLI invocation (no `ingest` subcommand needed):
+
+```powershell
+docker compose -f infra/docker-compose.yml exec api `
+    python -m app.ingestion.cli NVDA AMD INTC
+```
 
 ## Repository layout
 

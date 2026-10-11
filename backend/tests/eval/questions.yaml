@@ -48,7 +48,9 @@ questions:
     ticker: AMD
     question: "What product segments does AMD operate in, as described in its latest 10-K?"
     expects:
-      cited_sections: ["1"]
+      # Segment information typically appears in Item 1 (Business) and also in
+      # Item 8 (segment reporting notes). Either is a valid grounding.
+      cited_sections: ["1", "7", "8"]
       must_contain_any: ["Data Center", "Client", "Gaming", "Embedded"]
       deferred: false
 

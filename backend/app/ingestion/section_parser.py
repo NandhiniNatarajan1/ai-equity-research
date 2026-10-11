@@ -1,14 +1,17 @@
 """Section-aware parser for 10-K filings.
 
-Strategy:
+Strategy (first match wins):
   1. HTML -> plain text with BeautifulSoup (iXBRL and plain HTML both OK).
   2. Primary: regex-scan for "Item 1A."-style inline headings and keep the
      occurrence with the longest body per Item code (dedup against TOC).
-  3. Fallback (when fewer than MIN_SECTIONS Items produce real bodies —
-     common with filings that use a back-of-document cross-reference index
-     and Title Case section titles only, e.g. Intel): emit the entire body
-     as a single pseudo-section with item_code="FULL". Retrieval still works;
-     per-Item citation labels are lost until a smarter parser lands.
+  3. Secondary (title-based): for filings that only use "Item X" markers in
+     a back-of-document cross-reference index (e.g. Intel), scan for
+     standalone Title Case section headers ("Risk Factors", "Properties",
+     "Management's Discussion and Analysis", ...) on their own line.
+     Each matched title maps back to a canonical Item code.
+  4. Fallback: if neither strategy yields >= MIN_ITEM_SECTIONS real sections,
+     emit the entire body as one pseudo-section with item_code="FULL".
+     Retrieval still works; per-Item citation labels are lost.
 
 The output preserves plain-text char offsets so downstream chunking can
 record char_start / char_end back into the section's raw_text.
@@ -62,6 +65,38 @@ ITEM_ORDER_INDEX = {code: i for i, code in enumerate(ITEM_ORDER)}
 # Pseudo-section used by the fallback path when per-Item parsing fails.
 FULL_BODY_CODE = "FULL"
 FULL_BODY_TITLE = "Full 10-K Body"
+
+# Canonical section titles -> Item code, used by the title-based secondary parser.
+# Longer phrases first so the regex alternation matches the most specific title.
+TITLE_TO_ITEM: list[tuple[str, str]] = [
+    ("Management's Discussion and Analysis of Financial Condition and Results of Operations", "7"),
+    ("Management's Discussion and Analysis", "7"),
+    ("Quantitative and Qualitative Disclosures About Market Risk", "7A"),
+    ("Financial Statements and Supplementary Data", "8"),
+    ("Changes in and Disagreements with Accountants on Accounting and Financial Disclosure", "9"),
+    ("Changes in and Disagreements with Accountants", "9"),
+    ("Disclosure Regarding Foreign Jurisdictions that Prevent Inspections", "9C"),
+    ("Directors, Executive Officers and Corporate Governance", "10"),
+    ("Directors, Executive Officers, and Corporate Governance", "10"),
+    ("Security Ownership of Certain Beneficial Owners and Management", "12"),
+    ("Certain Relationships and Related Transactions, and Director Independence", "13"),
+    ("Principal Accountant Fees and Services", "14"),
+    ("Exhibits and Financial Statement Schedules", "15"),
+    ("Market for Registrant's Common Equity, Related Stockholder Matters, and Issuer Purchases of Equity Securities", "5"),
+    ("Market for Registrant's Common Equity", "5"),
+    ("Unresolved Staff Comments", "1B"),
+    ("Mine Safety Disclosures", "4"),
+    ("Controls and Procedures", "9A"),
+    ("Other Information", "9B"),
+    ("Executive Compensation", "11"),
+    ("Legal Proceedings", "3"),
+    ("Risk Factors", "1A"),
+    ("Cybersecurity", "1C"),
+    ("Properties", "2"),
+    ("Business", "1"),
+    ("Reserved", "6"),
+    ("Form 10-K Summary", "16"),
+]
 
 # Matches "Item 1A", "ITEM  1A.", "Item 1A — Risk Factors", etc. at the start
 # of a line (we normalize to one-item-per-line text before scanning).
@@ -145,21 +180,80 @@ def parse_sections(html_bytes: bytes | str) -> list[ParsedSection]:
             )
         )
 
-    if len(sections) < MIN_ITEM_SECTIONS:
-        # Fallback: filings like Intel's that use a back-of-document
-        # cross-reference index won't yield enough real Items.
-        # Keep the whole body as one pseudo-section so retrieval still works.
-        if text.strip():
-            return [
-                ParsedSection(
-                    item_code=FULL_BODY_CODE,
-                    title=FULL_BODY_TITLE,
-                    order_index=0,
-                    raw_text=text,
-                    char_count=len(text),
-                )
-            ]
+    if len(sections) >= MIN_ITEM_SECTIONS:
+        sections.sort(key=lambda s: s.order_index)
+        return sections
+
+    # Secondary strategy: title-based detection (e.g. Intel's filing style).
+    title_sections = _parse_sections_by_title(text)
+    if len(title_sections) >= MIN_ITEM_SECTIONS:
+        return title_sections
+
+    # Final fallback: emit the whole body as one pseudo-section so retrieval
+    # still works, even if per-Item citation labels are lost.
+    if text.strip():
+        return [
+            ParsedSection(
+                item_code=FULL_BODY_CODE,
+                title=FULL_BODY_TITLE,
+                order_index=0,
+                raw_text=text,
+                char_count=len(text),
+            )
+        ]
+    return []
+
+
+def _parse_sections_by_title(text: str) -> list[ParsedSection]:
+    """Scan for Title Case section headers on standalone lines.
+
+    Each matched title is mapped back to a canonical Item code. For each
+    item code, we keep the occurrence whose body (span up to the next
+    detected heading) is longest — the TOC occurrences have tiny bodies
+    and lose to the real body occurrences.
+    """
+    # Build a single alternation pattern. Longest titles first (list order
+    # matters) so e.g. "Management's Discussion and Analysis of Financial..."
+    # beats the shorter "Management's Discussion and Analysis".
+    escaped_titles = [re.escape(title) for title, _ in TITLE_TO_ITEM]
+    title_to_code = {title: code for title, code in TITLE_TO_ITEM}
+    # Match the title alone on a line (allow optional trailing punctuation).
+    # Headings in extracted text are their own line because html_to_text
+    # inserts a newline after each block-level tag.
+    pattern = re.compile(
+        r"^(?P<title>" + "|".join(escaped_titles) + r")\s*[\.\-–—:]?\s*$",
+        re.MULTILINE,
+    )
+
+    matches = list(pattern.finditer(text))
+    if not matches:
         return []
 
+    # Collect (code, body) for each occurrence; dedup by taking the longest body.
+    best: dict[str, tuple[int, int, str]] = {}  # code -> (start, end, body)
+    for i, m in enumerate(matches):
+        code = title_to_code[m.group("title")]
+        body_start = m.end()
+        body_end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[body_start:body_end].strip()
+        prev = best.get(code)
+        if prev is None or len(body) > len(prev[2]):
+            best[code] = (body_start, body_end, body)
+
+    sections: list[ParsedSection] = []
+    for code, (_, _, body) in best.items():
+        if len(body) < MIN_SECTION_BODY_CHARS:
+            continue
+        if code not in ITEM_ORDER_INDEX:
+            continue
+        sections.append(
+            ParsedSection(
+                item_code=code,
+                title=ITEM_TITLES[code],
+                order_index=ITEM_ORDER_INDEX[code],
+                raw_text=body,
+                char_count=len(body),
+            )
+        )
     sections.sort(key=lambda s: s.order_index)
     return sections

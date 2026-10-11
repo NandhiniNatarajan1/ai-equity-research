@@ -109,7 +109,9 @@ def _llm(model: str | None = None) -> ChatAnthropic:
     return ChatAnthropic(
         model=model or s.anthropic_model,
         api_key=s.anthropic_api_key.get_secret_value(),
-        max_tokens=2048,
+        # Composer needs headroom for multi-citation JSON (quoted spans + markdown).
+        # 2048 was clipping mid-string on 5-citation answers.
+        max_tokens=4096,
     )
 
 

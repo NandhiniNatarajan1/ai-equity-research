@@ -22,10 +22,15 @@ from pathlib import Path
 
 import pytest
 import yaml
+from dotenv import load_dotenv
 
-from app.agents.citation_integrity import validate_citations
-from app.agents.sec_filing_agent import run_agent
-from app.db.session import session_scope
+# Load .env from the repo root so ANTHROPIC_API_KEY etc. are available even
+# when running outside Docker (e.g. host venv against containerized Postgres).
+load_dotenv(Path(__file__).resolve().parents[3] / ".env", override=False)
+
+from app.agents.citation_integrity import validate_citations  # noqa: E402
+from app.agents.sec_filing_agent import run_agent  # noqa: E402
+from app.db.session import session_scope  # noqa: E402
 
 QUESTIONS_PATH = Path(__file__).parent / "questions.yaml"
 
