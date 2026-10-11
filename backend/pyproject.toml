@@ -31,6 +31,8 @@ dependencies = [
     "typer>=0.13",
     "python-dotenv>=1.0",
     "pyyaml>=6.0",
+    "yfinance>=0.2.50",
+    "weasyprint>=63",
 ]
 
 [project.optional-dependencies]

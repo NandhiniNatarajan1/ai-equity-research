@@ -53,16 +53,16 @@ def _latest_accession(ticker: str) -> str | None:
 
 def _result_to_cacheable(r: ReportResult) -> dict[str, Any]:
     """Serialize a ReportResult to a cache-friendly dict."""
-    from app.agents.schemas import AgentAnswer, AnswerCitation
+    from dataclasses import asdict as _dc_asdict
+
+    from app.agents.schemas import AgentAnswer
 
     def _answer_dict(a: AgentAnswer | None) -> dict[str, Any] | None:
         if a is None:
             return None
         return {
             "answer_markdown": a.answer_markdown,
-            "citations": [asdict(c) for c in a.citations] if False else [
-                c.model_dump() for c in a.citations
-            ],
+            "citations": [c.model_dump() for c in a.citations],
             "deferred": a.deferred,
             "deferral_reason": a.deferral_reason,
         }
@@ -87,6 +87,15 @@ def _result_to_cacheable(r: ReportResult) -> dict[str, Any]:
                 "error": specs.financial.error,
             },
         },
+        "price": _dc_asdict(specs.price) if specs.price else None,
+        "history": {
+            k: {
+                "name": v.name,
+                "unit": v.unit,
+                "points": [_dc_asdict(p) for p in v.points],
+            }
+            for k, v in specs.history.items()
+        },
     }
 
 
@@ -96,6 +105,8 @@ def _result_from_cache(blob: dict[str, Any]) -> ReportResult:
     from app.agents.competitor_agent import CompetitorAgentState
     from app.agents.report_agent import SpecialistOutputs
     from app.agents.schemas import AgentAnswer, AnswerCitation
+    from app.financial_tools.history import HistoryPoint, HistorySeries
+    from app.financial_tools.price_history import PriceSnapshot
 
     def _mk_answer(d: dict[str, Any] | None) -> AgentAnswer | None:
         if d is None:
@@ -108,6 +119,17 @@ def _result_from_cache(blob: dict[str, Any]) -> ReportResult:
         )
 
     specs = SpecialistOutputs(errors=blob.get("specialist_errors", {}) or {})
+    if blob.get("price"):
+        specs.price = PriceSnapshot(**blob["price"])
+    if blob.get("history"):
+        specs.history = {
+            k: HistorySeries(
+                name=v["name"],
+                unit=v["unit"],
+                points=[HistoryPoint(**p) for p in v.get("points", [])],
+            )
+            for k, v in blob["history"].items()
+        }
     s = blob.get("specialists", {})
     if s.get("business"):
         state = sec_filing_agent.AgentState(ticker=blob["ticker"], question="")
@@ -138,19 +160,28 @@ def _result_from_cache(blob: dict[str, Any]) -> ReportResult:
     )
 
 
-def get_or_generate(ticker: str, *, force_refresh: bool = False) -> tuple[ReportResult, dict[str, Any]]:
+def get_or_generate(
+    ticker: str,
+    *,
+    force_refresh: bool = False,
+    peers: list[str] | None = None,
+) -> tuple[ReportResult, dict[str, Any]]:
     """Return a report for `ticker`, from cache if possible.
 
-    Returns (result, meta) where meta carries cache diagnostics:
-      {"cached": bool, "accession": str, "generated_at": iso, "cache_path": str}
+    Caching is skipped when `peers` is a custom list — different peer
+    selections produce materially different Competitive Position sections,
+    so they must not share a cache slot. The default peer set still caches.
+
+    Returns (result, meta) with cache diagnostics.
     """
     ticker = ticker.upper()
     accession = _latest_accession(ticker)
     if accession is None:
         raise LookupError(f"No ingested filing for {ticker}.")
 
+    use_cache = peers is None
     path = _cache_path(ticker, accession)
-    if path.exists() and not force_refresh:
+    if use_cache and path.exists() and not force_refresh:
         try:
             blob = json.loads(path.read_text(encoding="utf-8"))
             result = _result_from_cache(blob)
@@ -159,29 +190,33 @@ def get_or_generate(ticker: str, *, force_refresh: bool = False) -> tuple[Report
                 "accession": accession,
                 "generated_at": blob.get("_generated_at"),
                 "cache_path": str(path),
+                "peers": None,
             }
             log.info("report_cache_hit", ticker=ticker, accession=accession)
             return result, meta
         except Exception as exc:
             log.warning("report_cache_read_fail", ticker=ticker, error=str(exc))
 
-    log.info("report_cache_miss", ticker=ticker, accession=accession)
-    result = generate_report(ticker)
-    try:
-        CACHE_DIR.mkdir(parents=True, exist_ok=True)
-        blob = _result_to_cacheable(result)
-        blob["_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
-        blob["_accession"] = accession
-        path.write_text(json.dumps(blob, default=str), encoding="utf-8")
-        log.info("report_cache_write", ticker=ticker, path=str(path))
-    except Exception as exc:
-        log.warning("report_cache_write_fail", ticker=ticker, error=str(exc))
+    log.info("report_cache_miss", ticker=ticker, accession=accession, custom_peers=peers)
+    result = generate_report(ticker, peers=peers)
+
+    if use_cache:
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            blob = _result_to_cacheable(result)
+            blob["_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
+            blob["_accession"] = accession
+            path.write_text(json.dumps(blob, default=str), encoding="utf-8")
+            log.info("report_cache_write", ticker=ticker, path=str(path))
+        except Exception as exc:
+            log.warning("report_cache_write_fail", ticker=ticker, error=str(exc))
 
     meta = {
         "cached": False,
         "accession": accession,
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
-        "cache_path": str(path),
+        "cache_path": str(path) if use_cache else None,
+        "peers": peers,
     }
     return result, meta
 

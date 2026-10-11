@@ -39,6 +39,10 @@ from app.agents import competitor_agent, financial_agent, risk_agent, sec_filing
 from app.agents.schemas import AgentAnswer, AnswerCitation
 from app.core.config import get_settings
 from app.core.logging import get_logger
+from app.financial_tools.history import HistorySeries, multi_year
+from app.financial_tools.price_history import PriceSnapshot, fetch_price_snapshot
+from app.financial_tools.xbrl_client import XbrlClient
+from app.mcp_server.tools import _company_cik  # type: ignore[attr-defined]
 
 log = get_logger("agent.report")
 
@@ -114,6 +118,9 @@ class SpecialistOutputs:
     financial: financial_agent.FinancialAgentState | None = None
     risk: risk_agent.RiskAgentState | None = None
     competitor: competitor_agent.CompetitorAgentState | None = None
+    # Non-LLM additions (M4):
+    price: PriceSnapshot | None = None
+    history: dict[str, HistorySeries] = field(default_factory=dict)
     errors: dict[str, str] = field(default_factory=dict)
 
 
@@ -181,16 +188,28 @@ def _parse_json_block(text: str) -> dict[str, Any]:
         raise
 
 
-def _fan_out(ticker: str) -> SpecialistOutputs:
+def _fetch_history(ticker: str) -> dict[str, HistorySeries]:
+    cik, _ = _company_cik(ticker)
+    with XbrlClient() as xc:
+        facts = xc.fetch(cik)
+    return multi_year(facts, years=5)
+
+
+def _fan_out(ticker: str, *, peers: list[str] | None = None) -> SpecialistOutputs:
     out = SpecialistOutputs()
     # Fan out in parallel; each specialist does its own LLM calls so this
-    # overlaps network waits across providers.
-    with cf.ThreadPoolExecutor(max_workers=4, thread_name_prefix="report") as pool:
-        futures = {
+    # overlaps network waits across providers. The two non-LLM tasks
+    # (price snapshot, 5Y XBRL history) run alongside at zero LLM cost.
+    with cf.ThreadPoolExecutor(max_workers=6, thread_name_prefix="report") as pool:
+        futures: dict[str, cf.Future] = {
             "business": pool.submit(sec_filing_agent.run_agent, ticker, BUSINESS_OVERVIEW_QUESTION),
             "financial": pool.submit(financial_agent.run_agent, ticker, FINANCIAL_HIGHLIGHTS_QUESTION),
             "risk": pool.submit(risk_agent.run_agent, ticker, RISK_QUESTION),
-            "competitor": pool.submit(competitor_agent.run_agent, ticker, COMPETITOR_QUESTION),
+            "competitor": pool.submit(
+                competitor_agent.run_agent, ticker, COMPETITOR_QUESTION, peers=peers
+            ),
+            "price": pool.submit(fetch_price_snapshot, ticker),
+            "history": pool.submit(_fetch_history, ticker),
         }
         for name, fut in futures.items():
             try:
@@ -269,10 +288,10 @@ def _collect_metrics(outs: SpecialistOutputs) -> list[dict[str, Any]]:
     ]
 
 
-def generate_report(ticker: str) -> ReportResult:
+def generate_report(ticker: str, *, peers: list[str] | None = None) -> ReportResult:
     ticker = ticker.upper()
-    log.info("report_start", ticker=ticker)
-    outs = _fan_out(ticker)
+    log.info("report_start", ticker=ticker, peers=peers)
+    outs = _fan_out(ticker, peers=peers)
 
     specialist_blob = _specialist_text_for_composer(outs)
     msgs = [

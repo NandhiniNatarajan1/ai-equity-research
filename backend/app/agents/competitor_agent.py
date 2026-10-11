@@ -26,7 +26,9 @@ from app.core.logging import get_logger
 
 log = get_logger("agent.competitor")
 
-PEER_SET: list[str] = ["NVDA", "AMD", "INTC"]
+# Default peer set for the MVP. Callers can override via the `peers` kwarg
+# on run_agent (e.g. from `/research/report/{ticker}?peers=NVDA,AMD`).
+DEFAULT_PEERS: list[str] = ["NVDA", "AMD", "INTC"]
 
 
 COMPARATOR_SYSTEM = """\
@@ -146,14 +148,31 @@ def _run_peer(ticker: str, question: str) -> PeerAnswer:
     return PeerAnswer(ticker=ticker, sec_state=state)
 
 
-def run_agent(ticker: str, question: str) -> CompetitorAgentState:
+def run_agent(
+    ticker: str,
+    question: str,
+    *,
+    peers: list[str] | None = None,
+) -> CompetitorAgentState:
     anchor = ticker.upper()
-    peers = [t for t in PEER_SET if t]  # include anchor; order is deterministic
+    # Normalize peer list: strip blanks, uppercase, dedupe while preserving order,
+    # and ensure the anchor ticker is included so the user sees their own company
+    # in the comparison.
+    raw = peers if peers is not None else DEFAULT_PEERS
+    seen: set[str] = set()
+    chosen: list[str] = []
+    for t in [*raw, anchor]:
+        if not t:
+            continue
+        t = t.upper().strip()
+        if t and t not in seen:
+            seen.add(t)
+            chosen.append(t)
     state = CompetitorAgentState(
-        anchor_ticker=anchor, question=question, peer_tickers=peers
+        anchor_ticker=anchor, question=question, peer_tickers=chosen
     )
 
-    for peer in peers:
+    for peer in chosen:
         try:
             pa = _run_peer(peer, question)
             state.peer_answers.append(pa)

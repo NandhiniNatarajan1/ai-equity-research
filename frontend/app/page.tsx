@@ -123,9 +123,18 @@ export default function Home() {
             target="_blank"
             rel="noreferrer"
             className="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
-            title="Generate the full research report (opens in a new tab; takes ~60s)"
+            title="Open the full research report in a new tab (first call ~60s; subsequent calls are cached)"
           >
-            Generate full report →
+            Open report →
+          </a>
+          <a
+            href={`http://localhost:8000/research/report/${ticker}/pdf`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            title="Download the report as a PDF (first call ~60s; served from cache after that)"
+          >
+            Download PDF ↓
           </a>
         </div>
       </form>

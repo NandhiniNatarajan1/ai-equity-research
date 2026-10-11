@@ -164,14 +164,31 @@ ai-equity-research/
   PROJECT_BRIEF.md         # original project brief
 ```
 
-## Milestone 4 (next)
+## Milestone 4 — shipped
 
-- Dynamic peer resolution for the Competitor Agent (currently hardcoded to
-  NVDA/AMD/INTC) — look up peers from SIC + XBRL metadata or a user-supplied
-  peer list.
-- yfinance for prices + simple charts in the report (sparklines for revenue,
-  margins over the last 5 FYs).
-- Server-side PDF rendering (weasyprint or similar) so the report downloads
-  as a .pdf directly rather than through browser print-to-PDF.
-- Report caching: skip the ~60s fan-out when a recent report exists for the
-  ticker and no new filings have been ingested.
+- **Report cache** keyed on `(ticker, latest_filing_accession)` under
+  `./data/reports/`. New ingestion auto-invalidates (new accession = new
+  key). First call ~60s, subsequent calls ~15ms.
+- **Sonnet / Haiku split** — the orchestrator LLM router, SEC Filing
+  planner, Financial Agent narrator, and Competitor Agent comparator all
+  use Claude Haiku 5.5 (~3x cheaper); Sonnet 5.5 reserved for final
+  composition and nuanced ranking (SEC Filing composer, Risk Agent,
+  Report Agent composer). ~50% token-cost reduction per report.
+- **yfinance stock snapshot** (1Y price + 1Y change) and **5-year
+  revenue/margin/FCF history** rendered as inline SVG sparklines and bar
+  charts in the report's new "Fundamentals snapshot" section. No new
+  system deps for the chart rendering (pure Python SVG).
+- **Server-side PDF** via WeasyPrint:
+  `GET /research/report/{ticker}/pdf` returns a browser-downloadable
+  `.pdf`. Falls back to a 503 with a clear message if WeasyPrint deps are
+  missing in the build.
+- **Configurable peer list** on the Report Agent: pass
+  `?peers=NVDA,AMD` to override the default peer set. Custom peer lists
+  bypass the cache.
+
+## Milestone 5 (next)
+
+- Dynamic peer resolution from SIC code / XBRL metadata (vs. the user
+  typing peer tickers manually).
+- Report cache TTL + a periodic refresh hook when new filings land.
+- RSS / 8-K ingestion so reports surface material events between 10-Ks.

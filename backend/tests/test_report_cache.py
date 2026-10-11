@@ -66,7 +66,7 @@ def tmp_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_cache_miss_then_hit_skips_generation(tmp_cache: Path) -> None:
     calls: list[str] = []
 
-    def fake_generate(ticker: str) -> ReportResult:
+    def fake_generate(ticker: str, *, peers: list[str] | None = None) -> ReportResult:
         calls.append(ticker)
         return _mk_result(ticker)
 
@@ -90,7 +90,7 @@ def test_cache_miss_then_hit_skips_generation(tmp_cache: Path) -> None:
 def test_new_accession_invalidates_cache(tmp_cache: Path) -> None:
     calls: list[str] = []
 
-    def fake_generate(ticker: str) -> ReportResult:
+    def fake_generate(ticker: str, *, peers: list[str] | None = None) -> ReportResult:
         calls.append(ticker)
         return _mk_result(ticker)
 
@@ -104,9 +104,17 @@ def test_new_accession_invalidates_cache(tmp_cache: Path) -> None:
     assert calls == ["NVDA", "NVDA"]
 
 
+def _fake_gen(calls: list[str]):
+    def _inner(ticker: str, *, peers: list[str] | None = None) -> ReportResult:
+        calls.append(ticker)
+        return _mk_result(ticker)
+
+    return _inner
+
+
 def test_force_refresh_bypasses_cache(tmp_cache: Path) -> None:
     calls: list[str] = []
-    with patch.object(report_cache, "generate_report", side_effect=lambda t: (calls.append(t), _mk_result(t))[1]):
+    with patch.object(report_cache, "generate_report", side_effect=_fake_gen(calls)):
         with patch.object(report_cache, "_latest_accession", return_value="ACC-1"):
             report_cache.get_or_generate("AMD")
             _, meta = report_cache.get_or_generate("AMD", force_refresh=True)
@@ -115,16 +123,36 @@ def test_force_refresh_bypasses_cache(tmp_cache: Path) -> None:
 
 
 def test_invalidate_removes_cached_file(tmp_cache: Path) -> None:
-    with patch.object(report_cache, "generate_report", side_effect=lambda t: _mk_result(t)):
+    calls: list[str] = []
+    with patch.object(report_cache, "generate_report", side_effect=_fake_gen(calls)):
         with patch.object(report_cache, "_latest_accession", return_value="ACC-1"):
             report_cache.get_or_generate("INTC")
     removed = report_cache.invalidate("INTC")
     assert removed == 1
     # Next call misses again.
-    with patch.object(report_cache, "generate_report", side_effect=lambda t: _mk_result(t)) as gen:
+    calls2: list[str] = []
+    with patch.object(report_cache, "generate_report", side_effect=_fake_gen(calls2)):
         with patch.object(report_cache, "_latest_accession", return_value="ACC-1"):
             report_cache.get_or_generate("INTC")
-        assert gen.call_count == 1
+    assert calls2 == ["INTC"]
+
+
+def test_custom_peers_bypasses_cache_and_doesnt_write(tmp_cache: Path) -> None:
+    """Different peer lists must not collide on the same cache slot."""
+    calls: list[str] = []
+    with patch.object(report_cache, "generate_report", side_effect=_fake_gen(calls)):
+        with patch.object(report_cache, "_latest_accession", return_value="ACC-1"):
+            # First call with default peers populates cache.
+            _, m1 = report_cache.get_or_generate("NVDA")
+            assert m1["cached"] is False
+            # Call with custom peers must bypass cache (generate), and not write.
+            _, m2 = report_cache.get_or_generate("NVDA", peers=["AMD"])
+            assert m2["cached"] is False
+            assert m2["peers"] == ["AMD"]
+            # Default peers again -> cache hit still works.
+            _, m3 = report_cache.get_or_generate("NVDA")
+            assert m3["cached"] is True
+    assert calls == ["NVDA", "NVDA"]
 
 
 def test_missing_ticker_raises_lookup_error(tmp_cache: Path) -> None:
