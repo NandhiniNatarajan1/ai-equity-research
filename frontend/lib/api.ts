@@ -9,12 +9,37 @@ export type Citation = {
   primary_doc_url: string;
 };
 
+export type FinancialFact = {
+  concept: string;
+  value: number;
+  unit: string;
+  fiscal_year: number;
+  fiscal_period: string;
+  end_date: string;
+  filed: string;
+  accession: string;
+  form: string;
+};
+
+export type FinancialCitation = {
+  marker: string;
+  name: string;
+  value: number | null;
+  unit: string;
+  period_label: string;
+  narrative: string;
+  inputs: FinancialFact[];
+};
+
 export type AskResponse = {
   run_id: string;
   ticker: string;
   question: string;
+  route: "sec_filing" | "financial";
+  route_reason: string | null;
   answer_markdown: string;
   citations: Citation[];
+  financial_citations: FinancialCitation[];
   deferred: boolean;
   deferral_reason: string | null;
   trace_url: string | null;

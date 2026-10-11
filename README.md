@@ -8,6 +8,15 @@ get an evidence-backed answer with working citations into the underlying 10-K.
 
 ## Status
 
+**Milestone 2 — Multi-agent (SEC Filing + Financial), router-dispatched.**
+A LangGraph orchestrator classifies each question and routes it to either
+the **SEC Filing Agent** (RAG over 10-K text with verified citations) or
+the **Financial Agent** (deterministic Python over SEC XBRL for growth,
+margins, FCF, etc.). Both agents share retrieval tools over MCP. The
+Financial Agent **never does arithmetic in the LLM** — numbers come from
+`backend/app/financial_tools/calculators.py` with full XBRL provenance
+(concept, accession, filed date) attached to every cited metric.
+
 **Milestone 1 — RAG over 10-Ks for NVDA, AMD, INTC.** Single SEC Filing Agent
 with section-aware retrieval over Postgres + pgvector, exposed as MCP tools.
 Every answer carries verifiable citations; the API refuses answers whose
@@ -103,18 +112,20 @@ The unit suite (18 tests) covers the parser, chunker, EDGAR client, and
 citation-integrity validator. The eval suite (10 questions) runs the full
 LangGraph agent against the ingested filings — it costs real tokens.
 
-### Eval results (2026-10-11)
+### Eval results (M1 + M2, 2026-10-11)
 
 Model: Claude Sonnet 5.5 • Embeddings: voyage-3 (1024-dim) • pgvector HNSW
 
-- **10 / 10 passed** in ~103 s (~$0.20 of Anthropic tokens)
-- 8 answered questions: plan → retrieve → compose all produced verified
-  citations into expected 10-K Item sections
-- 2 math-shaped questions (NVDA FCF margin, INTC revenue growth) correctly
-  returned `deferred=true` — the agent routes these to the (not-yet-shipped)
-  Financial Agent instead of hallucinating a number
-- Zero citation-integrity rejections: every claimed `chunk_id` was in that
-  run's retrieval set, and every quoted span fuzzy-matched its chunk text
+- **12 / 12 passed** in ~112 s
+- 8 SEC Filing Agent questions (NVDA/AMD/INTC qualitative disclosures): all
+  returned verified citations into expected 10-K Item sections. Partial
+  deferrals that still produced citation-backed content are accepted
+- 4 Financial Agent questions (NVDA revenue growth / gross margin, AMD FCF,
+  INTC operating margin): all routed through the deterministic calculators
+  with correct XBRL provenance
+- Zero citation-integrity rejections on the SEC path
+- Zero LLM arithmetic on the financial path — every number comes from
+  Python computation on XBRL facts
 
 Also fix the ingest CLI invocation (no `ingest` subcommand needed):
 
@@ -144,11 +155,9 @@ ai-equity-research/
   PROJECT_BRIEF.md         # original project brief
 ```
 
-## Milestone 2 (next)
+## Milestone 3 (next)
 
-- `financial_tools/` — SEC Company Facts XBRL + deterministic ratio calculators,
-  exposed as MCP tools.
-- Financial Agent (consumes those tools), Risk Agent, Competitor Agent,
-  Verification + Report Agent.
+- Risk Agent, Competitor Agent, Verification + Report Agent (parallel branches
+  in the LangGraph orchestrator, merged by a final composer).
 - yfinance for prices, basic charts in the UI.
 - PDF report export.

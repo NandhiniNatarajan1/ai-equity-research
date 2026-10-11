@@ -14,6 +14,8 @@ from mcp.server.mcpserver import MCPServer
 
 from app.core.logging import configure_logging, get_logger
 from app.mcp_server.tools import get_filing_section as _get_filing_section
+from app.mcp_server.tools import get_financial_metrics as _get_financial_metrics
+from app.mcp_server.tools import get_revenue_history as _get_revenue_history
 from app.mcp_server.tools import search_filings as _search_filings
 
 log = get_logger("mcp.server")
@@ -54,6 +56,32 @@ def search_filings(
 )
 def get_filing_section(ticker: str, item_code: str, max_chars: int = 20000) -> dict:
     return _get_filing_section(ticker, item_code, max_chars=max_chars)
+
+
+@mcp.tool(
+    name="get_financial_metrics",
+    description=(
+        "Compute deterministic financial metrics (revenue growth, margins, "
+        "FCF, etc.) for a ticker's latest fiscal year. Metrics are computed "
+        "by pure Python over SEC XBRL facts — never by LLM arithmetic. The "
+        "response includes the full provenance (concept, accession, filed "
+        "date) of every input fact so the agent can cite the source."
+    ),
+)
+def get_financial_metrics(ticker: str, metrics: list[str] | None = None) -> dict:
+    return _get_financial_metrics(ticker, metrics=metrics)
+
+
+@mcp.tool(
+    name="get_revenue_history",
+    description=(
+        "Return the last N annual revenue values for a ticker, newest first, "
+        "with full provenance (fiscal year, accession, filed date). Pulls "
+        "directly from SEC Company Facts XBRL — no LLM arithmetic."
+    ),
+)
+def get_revenue_history(ticker: str, years: int = 5) -> dict:
+    return _get_revenue_history(ticker, years=years)
 
 
 def main() -> None:

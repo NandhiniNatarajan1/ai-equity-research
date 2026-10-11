@@ -11,14 +11,18 @@ const SAMPLE_QUESTIONS: Record<Ticker, string[]> = {
   NVDA: [
     "What does NVIDIA identify as its primary data center competition in its most recent 10-K?",
     "What risks does NVIDIA disclose from U.S. export controls affecting sales to China?",
+    "What was NVIDIA's revenue growth and gross margin last year?",
+    "What is NVIDIA's 3-year revenue CAGR?",
   ],
   AMD: [
     "What product segments does AMD operate in, as described in its latest 10-K?",
     "How does AMD describe its strategy for AI accelerators?",
+    "What was AMD's operating margin last fiscal year?",
   ],
   INTC: [
     "What does Intel disclose about its foundry (IFS) strategy?",
     "Does Intel disclose material customer concentration risk?",
+    "What was Intel's free cash flow last fiscal year?",
   ],
 };
 

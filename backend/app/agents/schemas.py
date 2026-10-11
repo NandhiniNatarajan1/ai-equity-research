@@ -44,12 +44,41 @@ class CitationOut(BaseModel):
     primary_doc_url: str
 
 
+class FinancialFactOut(BaseModel):
+    """One XBRL fact that backed a computed metric."""
+
+    concept: str
+    value: float
+    unit: str
+    fiscal_year: int
+    fiscal_period: str
+    end_date: str
+    filed: str
+    accession: str
+    form: str
+
+
+class FinancialCitationOut(BaseModel):
+    """A deterministic financial metric, with its inputs' provenance."""
+
+    marker: str  # e.g. "[metric: revenue_yoy_growth]"
+    name: str
+    value: float | None
+    unit: str
+    period_label: str
+    narrative: str
+    inputs: list[FinancialFactOut]
+
+
 class ResearchAskResponse(BaseModel):
     run_id: str
     ticker: str
     question: str
+    route: str  # "sec_filing" | "financial"
+    route_reason: str | None = None
     answer_markdown: str
-    citations: list[CitationOut]
-    deferred: bool
-    deferral_reason: str | None
+    citations: list[CitationOut] = Field(default_factory=list)
+    financial_citations: list[FinancialCitationOut] = Field(default_factory=list)
+    deferred: bool = False
+    deferral_reason: str | None = None
     trace_url: str | None = None

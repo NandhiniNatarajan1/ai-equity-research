@@ -22,6 +22,15 @@ from sqlalchemy.orm import Session
 
 from app.db.models import Chunk, ChunkEmbedding, Company, Filing, Section
 from app.db.session import session_scope
+from app.financial_tools import (
+    XbrlClient,
+    free_cash_flow,
+    gross_margin,
+    net_margin,
+    operating_margin,
+    revenue_cagr,
+    revenue_yoy_growth,
+)
 from app.ingestion.embedder import build_embedder
 
 _ITEM_PREFIX_RE = re.compile(r"^\s*(item\s+)?", re.IGNORECASE)
@@ -167,3 +176,93 @@ def get_filing_section(
             "truncated": truncated,
             "text": text[:max_chars],
         }
+
+
+# ---------------------------------------------------------------------------
+# Financial tools (deterministic Python over SEC XBRL — Milestone 2).
+# ---------------------------------------------------------------------------
+
+
+_CALCULATORS = {
+    "revenue_yoy_growth": revenue_yoy_growth,
+    "revenue_cagr_3y": lambda f: revenue_cagr(f, years=3),
+    "gross_margin": gross_margin,
+    "operating_margin": operating_margin,
+    "net_margin": net_margin,
+    "free_cash_flow": free_cash_flow,
+}
+
+
+def _company_cik(ticker: str) -> tuple[str, str]:
+    with session_scope() as db:
+        company = _resolve_company_or_404(db, ticker)
+        return company.cik, company.ticker
+
+
+def get_financial_metrics(
+    ticker: str,
+    metrics: list[str] | None = None,
+) -> dict[str, Any]:
+    """Compute deterministic financial metrics for `ticker`'s latest fiscal year.
+
+    `metrics` restricts to a subset; omit or empty for all. Supported:
+      - revenue_yoy_growth
+      - revenue_cagr_3y
+      - gross_margin
+      - operating_margin
+      - net_margin
+      - free_cash_flow
+
+    Returns each metric with its computed value AND the exact XBRL fact
+    inputs that produced it (concept, accession, filed date, form). The
+    Financial Agent cites these facts in its answer — no LLM arithmetic.
+    """
+    cik, ticker_upper = _company_cik(ticker)
+    wanted = [m for m in (metrics or list(_CALCULATORS)) if m in _CALCULATORS]
+    if not wanted:
+        raise ValueError(f"No valid metrics requested. Supported: {sorted(_CALCULATORS)}")
+
+    with XbrlClient() as client:
+        facts = client.fetch(cik)
+
+    results = []
+    for name in wanted:
+        result = _CALCULATORS[name](facts)
+        results.append(result.as_dict())
+
+    return {
+        "ticker": ticker_upper,
+        "entity_name": facts.entity_name,
+        "cik": cik,
+        "metrics": results,
+    }
+
+
+def get_revenue_history(ticker: str, years: int = 5) -> dict[str, Any]:
+    """Return raw annual revenue values for `ticker`, newest first.
+
+    Includes full provenance so the agent can cite each year's revenue
+    directly to the originating 10-K filing.
+    """
+    cik, ticker_upper = _company_cik(ticker)
+    with XbrlClient() as client:
+        facts = client.fetch(cik)
+    series = facts.annual_series("revenue", limit=max(1, min(years, 15)))
+    return {
+        "ticker": ticker_upper,
+        "entity_name": facts.entity_name,
+        "cik": cik,
+        "concept": series[0].concept if series else None,
+        "unit": series[0].unit if series else "USD",
+        "points": [
+            {
+                "fiscal_year": p.fiscal_year,
+                "value": p.value,
+                "end_date": p.end_date,
+                "filed": p.filed,
+                "accession": p.accession,
+                "form": p.form,
+            }
+            for p in series
+        ],
+    }
