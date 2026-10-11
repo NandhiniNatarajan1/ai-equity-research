@@ -1,0 +1,91 @@
+# Milestone 1 eval set.
+#
+# Each entry:
+#   id:             stable test id
+#   ticker:         company under test (must be ingested)
+#   question:       the user's question, as typed in the UI
+#   expects:        what a good answer should look like
+#     cited_sections:    at least one citation should come from one of these Items
+#     must_contain_any:  the answer must mention at least one of these substrings
+#                        (case-insensitive); keep terms unambiguous
+#     deferred:          true if the question requires financial math (should defer)
+#
+# The eval runner lives at tests/eval/test_eval_set.py and is marked `eval`,
+# so it is skipped during normal `pytest` runs unless you pass `-m eval`.
+
+questions:
+  - id: nvda_data_center_competition
+    ticker: NVDA
+    question: "What does NVIDIA identify as its primary data center competition in its most recent 10-K?"
+    expects:
+      cited_sections: ["1", "1A"]
+      must_contain_any: ["cloud", "hyperscale", "custom silicon", "AMD", "Intel"]
+      deferred: false
+
+  - id: nvda_export_controls_risk
+    ticker: NVDA
+    question: "What risks does NVIDIA disclose from U.S. export controls affecting sales to China?"
+    expects:
+      cited_sections: ["1A"]
+      must_contain_any: ["China", "export", "license"]
+      deferred: false
+
+  - id: nvda_supply_concentration
+    ticker: NVDA
+    question: "How concentrated is NVIDIA's supply chain for advanced chip manufacturing?"
+    expects:
+      cited_sections: ["1", "1A"]
+      must_contain_any: ["Taiwan", "TSMC", "foundry", "foundries"]
+      deferred: false
+
+  - id: nvda_fcf_margin_defer
+    ticker: NVDA
+    question: "What is NVIDIA's free cash flow margin for the most recent fiscal year?"
+    expects:
+      deferred: true
+
+  - id: amd_business_description
+    ticker: AMD
+    question: "What product segments does AMD operate in, as described in its latest 10-K?"
+    expects:
+      cited_sections: ["1"]
+      must_contain_any: ["Data Center", "Client", "Gaming", "Embedded"]
+      deferred: false
+
+  - id: amd_ai_strategy
+    ticker: AMD
+    question: "How does AMD describe its strategy for AI accelerators in its most recent 10-K?"
+    expects:
+      cited_sections: ["1", "7"]
+      must_contain_any: ["Instinct", "MI", "accelerator", "AI"]
+      deferred: false
+
+  - id: amd_competition_risk
+    ticker: AMD
+    question: "Which competitors does AMD cite as material risks in its risk factors?"
+    expects:
+      cited_sections: ["1A"]
+      must_contain_any: ["Intel", "NVIDIA", "competition"]
+      deferred: false
+
+  - id: intc_foundry_strategy
+    ticker: INTC
+    question: "What does Intel disclose about its foundry (IFS) strategy in its latest 10-K?"
+    expects:
+      cited_sections: ["1", "7"]
+      must_contain_any: ["foundry", "IFS", "process node", "Intel 18A"]
+      deferred: false
+
+  - id: intc_customer_concentration
+    ticker: INTC
+    question: "Does Intel disclose material customer concentration risk? Summarize what it says."
+    expects:
+      cited_sections: ["1A"]
+      must_contain_any: ["customer", "concentration", "revenue"]
+      deferred: false
+
+  - id: intc_revenue_growth_defer
+    ticker: INTC
+    question: "What was Intel's year-over-year revenue growth rate?"
+    expects:
+      deferred: true

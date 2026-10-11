@@ -1,0 +1,55 @@
+"""Pydantic I/O contracts for the agents and the research API."""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+
+class ToolCallRecord(BaseModel):
+    """One MCP tool invocation during an agent run."""
+
+    tool: str
+    arguments: dict
+    returned_chunk_ids: list[str] = Field(default_factory=list)
+
+
+class AnswerCitation(BaseModel):
+    marker: str  # e.g. "[1]"
+    chunk_id: str
+    quoted_text: str
+
+
+class AgentAnswer(BaseModel):
+    """What the LLM is required to produce."""
+
+    answer_markdown: str
+    citations: list[AnswerCitation]
+    deferred: bool = False
+    deferral_reason: str | None = None
+
+
+class ResearchAskRequest(BaseModel):
+    ticker: str = Field(min_length=1, max_length=16)
+    question: str = Field(min_length=3, max_length=2000)
+
+
+class CitationOut(BaseModel):
+    marker: str
+    chunk_id: str
+    quoted_text: str
+    section_item_code: str
+    section_title: str
+    filing_accession: str
+    filing_date: str
+    primary_doc_url: str
+
+
+class ResearchAskResponse(BaseModel):
+    run_id: str
+    ticker: str
+    question: str
+    answer_markdown: str
+    citations: list[CitationOut]
+    deferred: bool
+    deferral_reason: str | None
+    trace_url: str | None = None

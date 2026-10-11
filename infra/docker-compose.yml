@@ -1,0 +1,75 @@
+name: ai-equity-research
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aer-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aer}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aer}
+      POSTGRES_DB: ${POSTGRES_DB:-aer}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-aer} -d ${POSTGRES_DB:-aer}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: aer-api
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aer}:${POSTGRES_PASSWORD:-aer}@postgres:5432/${POSTGRES_DB:-aer}
+      MCP_SERVER_URL: http://mcp:8765
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - ../data:/app/data
+
+  mcp:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: aer-mcp
+    restart: unless-stopped
+    env_file:
+      - ../.env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-aer}:${POSTGRES_PASSWORD:-aer}@postgres:5432/${POSTGRES_DB:-aer}
+    command: ["python", "-m", "app.mcp_server", "--host", "0.0.0.0", "--port", "8765"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${MCP_PORT:-8765}:8765"
+
+  web:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        # Next.js resolves rewrites() at build time, so API_URL must be set
+        # as a build arg (not just an env var) to be baked into the manifest.
+        API_URL: http://api:8000
+    container_name: aer-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+
+volumes:
+  postgres_data:
