@@ -77,3 +77,50 @@ export async function getChunk(chunkId: string): Promise<ChunkDetail> {
   if (!r.ok) throw new Error(`chunk fetch failed (${r.status})`);
   return r.json();
 }
+
+export type SystemCompany = {
+  ticker: string;
+  name: string;
+  cik: string;
+  ingested: boolean;
+  latest_filing: {
+    accession: string;
+    form_type: string;
+    filing_date: string;
+    primary_doc_url: string;
+  } | null;
+  section_count: number;
+  chunk_count: number;
+};
+
+export type SystemStatus = {
+  companies: SystemCompany[];
+  generated_at: string;
+};
+
+export async function getSystemStatus(): Promise<SystemStatus> {
+  const r = await fetch("/api/system/status");
+  if (!r.ok) throw new Error(`status fetch failed (${r.status})`);
+  return r.json();
+}
+
+export type RunSummary = {
+  run_id: string;
+  ticker: string;
+  question: string;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  trace_url: string | null;
+  error: string | null;
+  answer_preview: string;
+  n_tool_calls: number;
+};
+
+export async function listRuns(limit = 25, ticker?: string): Promise<RunSummary[]> {
+  const qs = new URLSearchParams({ limit: String(limit) });
+  if (ticker) qs.set("ticker", ticker);
+  const r = await fetch(`/api/runs?${qs.toString()}`);
+  if (!r.ok) throw new Error(`runs fetch failed (${r.status})`);
+  return r.json();
+}

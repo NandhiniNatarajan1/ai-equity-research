@@ -181,7 +181,18 @@ export default function AnswerView({ result }: Props) {
         >
           {routeLabel}
         </span>
-        {result.route_reason && <span>{result.route_reason}</span>}
+        {result.route_reason && <span className="truncate">{result.route_reason}</span>}
+        {result.trace_url && (
+          <a
+            href={result.trace_url}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto text-blue-600 hover:underline dark:text-blue-400"
+            title="Open this run's trace in LangSmith"
+          >
+            trace ↗
+          </a>
+        )}
       </div>
 
       {result.deferred && (

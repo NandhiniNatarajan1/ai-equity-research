@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import AnswerView from "./components/AnswerView";
+import RunHistory from "./components/RunHistory";
+import StatusBar from "./components/StatusBar";
 import { askResearch, type AskResponse } from "@/lib/api";
 
 const TICKERS = ["NVDA", "AMD", "INTC"] as const;
@@ -32,6 +34,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AskResponse | null>(null);
+  const [historyKey, setHistoryKey] = useState(0);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,17 +48,21 @@ export default function Home() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
+      setHistoryKey((k) => k + 1);
     }
   }
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-12">
-      <header className="mb-8">
+      <header className="mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">AI Equity Research</h1>
         <p className="mt-1 text-sm text-neutral-500">
           Ask a question about a company&apos;s most recent 10-K. Every claim is cited back to the
           underlying passage.
         </p>
+        <div className="mt-3">
+          <StatusBar />
+        </div>
       </header>
 
       <form onSubmit={submit} className="space-y-4">
@@ -103,13 +110,24 @@ export default function Home() {
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={loading || !question.trim()}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {loading ? "Researching…" : "Ask"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={loading || !question.trim()}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Researching…" : "Ask"}
+          </button>
+          <a
+            href={`http://localhost:8000/research/report/${ticker}.html`}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md border border-neutral-300 bg-white px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            title="Generate the full research report (opens in a new tab; takes ~60s)"
+          >
+            Generate full report →
+          </a>
+        </div>
       </form>
 
       {error && (
@@ -119,6 +137,8 @@ export default function Home() {
       )}
 
       {result && <AnswerView result={result} />}
+
+      <RunHistory refreshKey={historyKey} ticker={ticker} />
     </main>
   );
 }

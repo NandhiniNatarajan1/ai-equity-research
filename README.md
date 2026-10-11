@@ -8,6 +8,15 @@ get an evidence-backed answer with working citations into the underlying 10-K.
 
 ## Status
 
+**Milestone 3 — Full research report (4 specialist agents + Verification/Report composer).**
+`GET /research/report/{ticker}.html` fans out to **SEC Filing**, **Financial**,
+**Risk** (ranked themed Item 1A analysis), and **Competitor** (cross-ticker
+comparison) agents in parallel, then merges their outputs into a structured,
+print-friendly report (Executive Summary → Business → Financials → Risks →
+Competitive Position → Sources). Opens in a new tab; Ctrl+P exports to PDF.
+UI also ships ingested-ticker status chips, run history, and per-run
+LangSmith trace links.
+
 **Milestone 2 — Multi-agent (SEC Filing + Financial), router-dispatched.**
 A LangGraph orchestrator classifies each question and routes it to either
 the **SEC Filing Agent** (RAG over 10-K text with verified citations) or
@@ -155,9 +164,14 @@ ai-equity-research/
   PROJECT_BRIEF.md         # original project brief
 ```
 
-## Milestone 3 (next)
+## Milestone 4 (next)
 
-- Risk Agent, Competitor Agent, Verification + Report Agent (parallel branches
-  in the LangGraph orchestrator, merged by a final composer).
-- yfinance for prices, basic charts in the UI.
-- PDF report export.
+- Dynamic peer resolution for the Competitor Agent (currently hardcoded to
+  NVDA/AMD/INTC) — look up peers from SIC + XBRL metadata or a user-supplied
+  peer list.
+- yfinance for prices + simple charts in the report (sparklines for revenue,
+  margins over the last 5 FYs).
+- Server-side PDF rendering (weasyprint or similar) so the report downloads
+  as a .pdf directly rather than through browser print-to-PDF.
+- Report caching: skip the ~60s fan-out when a recent report exists for the
+  ticker and no new filings have been ingested.

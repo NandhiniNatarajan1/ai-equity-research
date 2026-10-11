@@ -27,6 +27,7 @@ from app.agents.schemas import (
     ResearchAskResponse,
 )
 from app.core.logging import get_logger
+from app.core.tracing import TraceCapture
 from app.db.models import AgentRun, Citation
 from app.db.session import get_session
 
@@ -45,7 +46,10 @@ def ask(req: ResearchAskRequest, db: Session = Depends(get_session)) -> Research
     db.refresh(run)
 
     try:
-        result = orchestrator_run(ticker, req.question)
+        with TraceCapture() as cap:
+            result = orchestrator_run(ticker, req.question)
+        if cap.trace_url:
+            run.trace_url = cap.trace_url
     except LookupError as exc:
         run.status = "no_data"
         run.error = str(exc)
@@ -134,6 +138,7 @@ def ask(req: ResearchAskRequest, db: Session = Depends(get_session)) -> Research
             ],
             deferred=answer.deferred,
             deferral_reason=answer.deferral_reason,
+            trace_url=run.trace_url,
         )
 
     # ------------------------------------------------------------------
@@ -189,4 +194,5 @@ def ask(req: ResearchAskRequest, db: Session = Depends(get_session)) -> Research
         answer_markdown=fin.answer_markdown or "",
         financial_citations=cited,
         deferred=False,
+        trace_url=run.trace_url,
     )
