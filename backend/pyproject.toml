@@ -62,7 +62,16 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
-ignore = ["E501"]
+ignore = [
+    "E501",   # long lines — long URLs and prompts are fine
+    "B008",   # function call in default — FastAPI's Depends() uses this
+    "SIM117", # nested `with` — stylistic preference, often clearer
+    "SIM105", # try/except/pass — explicit over contextlib.suppress for clarity
+    "SIM108", # if/else -> ternary — avoid dense expressions for readability
+    "RUF001", # ambiguous unicode in strings — intentional em-dashes in prompts
+    "RUF003", # ambiguous unicode in comments — same
+    "B905",   # zip without strict= — not a correctness bug here
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B011"]

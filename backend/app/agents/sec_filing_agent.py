@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -32,7 +32,7 @@ from langgraph.graph import END, START, StateGraph
 from app.agents.schemas import AgentAnswer, AnswerCitation, ToolCallRecord
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.mcp_server.tools import get_filing_section, search_filings
+from app.mcp_server.tools import search_filings
 
 log = get_logger("agent.sec_filing")
 

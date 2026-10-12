@@ -7,8 +7,8 @@ that LangChain / LangGraph consult at import time. Safe to call multiple times.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Iterator
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
@@ -43,7 +43,7 @@ class TraceCapture:
         self._cm = None
         self._cb = None
 
-    def __enter__(self) -> "TraceCapture":
+    def __enter__(self) -> TraceCapture:
         if not get_settings().langchain_tracing_v2:
             return self
         try:

@@ -221,7 +221,7 @@ class XbrlClient:
         if self._owns_edgar:
             self._edgar.close()
 
-    def __enter__(self) -> "XbrlClient":
+    def __enter__(self) -> XbrlClient:
         return self
 
     def __exit__(self, *_: object) -> None:

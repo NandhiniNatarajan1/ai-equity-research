@@ -14,8 +14,7 @@ is content-addressed by the SEC accession number.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -215,7 +214,7 @@ def get_or_generate(
         try:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)
             blob = _result_to_cacheable(result)
-            blob["_generated_at"] = datetime.now(tz=timezone.utc).isoformat()
+            blob["_generated_at"] = datetime.now(tz=UTC).isoformat()
             blob["_accession"] = accession
             path.write_text(json.dumps(blob, default=str), encoding="utf-8")
             log.info("report_cache_write", ticker=ticker, path=str(path))
@@ -225,7 +224,7 @@ def get_or_generate(
     meta = {
         "cached": False,
         "accession": accession,
-        "generated_at": datetime.now(tz=timezone.utc).isoformat(),
+        "generated_at": datetime.now(tz=UTC).isoformat(),
         "cache_path": str(path) if use_cache else None,
         "peers": peers,
     }

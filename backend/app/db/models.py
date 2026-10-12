@@ -24,7 +24,7 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, MappedAsDataclass, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.core.config import get_settings
 
@@ -50,7 +50,7 @@ class Company(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
-    filings: Mapped[list["Filing"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    filings: Mapped[list[Filing]] = relationship(back_populates="company", cascade="all, delete-orphan")
 
 
 class Filing(Base):
@@ -71,7 +71,7 @@ class Filing(Base):
     )
 
     company: Mapped[Company] = relationship(back_populates="filings")
-    sections: Mapped[list["Section"]] = relationship(
+    sections: Mapped[list[Section]] = relationship(
         back_populates="filing", cascade="all, delete-orphan", order_by="Section.order_index"
     )
 
@@ -93,7 +93,7 @@ class Section(Base):
     char_count: Mapped[int] = mapped_column(Integer, nullable=False)
 
     filing: Mapped[Filing] = relationship(back_populates="sections")
-    chunks: Mapped[list["Chunk"]] = relationship(
+    chunks: Mapped[list[Chunk]] = relationship(
         back_populates="section", cascade="all, delete-orphan", order_by="Chunk.chunk_index"
     )
 
@@ -116,7 +116,7 @@ class Chunk(Base):
     char_end: Mapped[int] = mapped_column(Integer, nullable=False)
 
     section: Mapped[Section] = relationship(back_populates="chunks")
-    embedding: Mapped["ChunkEmbedding | None"] = relationship(
+    embedding: Mapped[ChunkEmbedding | None] = relationship(
         back_populates="chunk", uselist=False, cascade="all, delete-orphan"
     )
 
@@ -154,7 +154,7 @@ class AgentRun(Base):
     tool_calls: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
     error: Mapped[str | None] = mapped_column(Text)
 
-    citations: Mapped[list["Citation"]] = relationship(
+    citations: Mapped[list[Citation]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )
 

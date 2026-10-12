@@ -12,7 +12,7 @@ Python over XBRL and are published with full fact provenance.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -53,7 +53,7 @@ def ask(req: ResearchAskRequest, db: Session = Depends(get_session)) -> Research
     except LookupError as exc:
         run.status = "no_data"
         run.error = str(exc)
-        run.finished_at = datetime.now(tz=timezone.utc)
+        run.finished_at = datetime.now(tz=UTC)
         db.commit()
         log.warning("ask_no_data", run_id=str(run.id), ticker=ticker, error=str(exc))
         raise HTTPException(
@@ -66,7 +66,7 @@ def ask(req: ResearchAskRequest, db: Session = Depends(get_session)) -> Research
     except Exception as exc:
         run.status = "error"
         run.error = str(exc)
-        run.finished_at = datetime.now(tz=timezone.utc)
+        run.finished_at = datetime.now(tz=UTC)
         db.commit()
         log.exception("ask_agent_error", run_id=str(run.id), error=str(exc))
         raise HTTPException(status_code=500, detail=f"Agent error: {exc}") from exc
@@ -81,7 +81,7 @@ def ask(req: ResearchAskRequest, db: Session = Depends(get_session)) -> Research
         if answer is None:
             run.status = "error"
             run.error = "agent produced no answer"
-            run.finished_at = datetime.now(tz=timezone.utc)
+            run.finished_at = datetime.now(tz=UTC)
             db.commit()
             raise HTTPException(status_code=500, detail="Agent produced no answer")
 
@@ -90,7 +90,7 @@ def ask(req: ResearchAskRequest, db: Session = Depends(get_session)) -> Research
             run.status = "citation_failed"
             run.answer = answer.answer_markdown
             run.error = f"citation_integrity_failed: {len(validation.issues)} issues"
-            run.finished_at = datetime.now(tz=timezone.utc)
+            run.finished_at = datetime.now(tz=UTC)
             db.commit()
             raise HTTPException(
                 status_code=422,
@@ -113,7 +113,7 @@ def ask(req: ResearchAskRequest, db: Session = Depends(get_session)) -> Research
 
         run.status = "ok"
         run.answer = answer.answer_markdown
-        run.finished_at = datetime.now(tz=timezone.utc)
+        run.finished_at = datetime.now(tz=UTC)
         db.commit()
 
         return ResearchAskResponse(
@@ -157,7 +157,7 @@ def ask(req: ResearchAskRequest, db: Session = Depends(get_session)) -> Research
         run.status = "error"
         run.answer = fin.answer_markdown
         run.error = fin.error
-        run.finished_at = datetime.now(tz=timezone.utc)
+        run.finished_at = datetime.now(tz=UTC)
         db.commit()
         raise HTTPException(status_code=500, detail=f"Financial Agent error: {fin.error}")
 
@@ -182,7 +182,7 @@ def ask(req: ResearchAskRequest, db: Session = Depends(get_session)) -> Research
 
     run.status = "ok"
     run.answer = fin.answer_markdown
-    run.finished_at = datetime.now(tz=timezone.utc)
+    run.finished_at = datetime.now(tz=UTC)
     db.commit()
 
     return ResearchAskResponse(

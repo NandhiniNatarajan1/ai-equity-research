@@ -11,7 +11,7 @@ PDF renderer (weasyprint/cairo), which bloats the Docker image.
 from __future__ import annotations
 
 import html as html_lib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -56,7 +56,7 @@ def _report_to_dict(r: ReportResult, cache_meta: dict[str, Any] | None = None) -
     out: dict[str, Any] = {
         "ticker": r.ticker,
         "generated_at": (cache_meta or {}).get("generated_at")
-        or datetime.now(tz=timezone.utc).isoformat(),
+        or datetime.now(tz=UTC).isoformat(),
         "report_markdown": r.report_markdown,
         "specialists": {
             "business": _specialist("business", r.specialists.business),

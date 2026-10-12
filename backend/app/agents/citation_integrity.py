@@ -13,9 +13,9 @@ mismatches back to the agent for a retry.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Iterable
 from uuid import UUID
 
 from sqlalchemy import select
@@ -56,7 +56,7 @@ class ValidationResult:
     ok: bool
     issues: list[CitationIssue]
     verified: list[AnswerCitation]
-    enriched: list["EnrichedCitation"]
+    enriched: list[EnrichedCitation]
 
 
 @dataclass(frozen=True)

@@ -52,7 +52,7 @@ def test_latest_10k_from_submissions(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
     client = EdgarClient(cache_dir=tmp_path, per_sec=100)
 
-    def fake_fetch(self: EdgarClient, url: str, *, use_cache: bool = True) -> bytes:  # noqa: ARG001
+    def fake_fetch(self: EdgarClient, url: str, *, use_cache: bool = True) -> bytes:
         return json.dumps(submissions).encode()
 
     monkeypatch.setattr(EdgarClient, "fetch", fake_fetch)
@@ -68,7 +68,7 @@ def test_disk_cache_hit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None
     client = EdgarClient(cache_dir=tmp_path, per_sec=100)
     calls: list[str] = []
 
-    def fake_get(self: EdgarClient, url: str) -> bytes:  # noqa: ARG001
+    def fake_get(self: EdgarClient, url: str) -> bytes:
         calls.append(url)
         return b"hello"
 

@@ -108,7 +108,7 @@ class EdgarClient:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "EdgarClient":
+    def __enter__(self) -> EdgarClient:
         return self
 
     def __exit__(self, *_: object) -> None:

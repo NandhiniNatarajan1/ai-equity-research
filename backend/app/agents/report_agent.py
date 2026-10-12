@@ -36,7 +36,7 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agents import competitor_agent, financial_agent, risk_agent, sec_filing_agent
-from app.agents.schemas import AgentAnswer, AnswerCitation
+from app.agents.schemas import AnswerCitation
 from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.financial_tools.history import HistorySeries, multi_year

@@ -7,7 +7,7 @@ on demand.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -156,6 +156,6 @@ def ingest(ticker: str) -> dict[str, Any]:
         pass
     return {
         "ticker": ticker,
-        "finished_at": datetime.now(tz=timezone.utc).isoformat(),
+        "finished_at": datetime.now(tz=UTC).isoformat(),
         **result,
     }

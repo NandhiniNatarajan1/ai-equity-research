@@ -17,13 +17,13 @@ from app.financial_tools.xbrl_client import CompanyFacts, XbrlClient, XbrlFactPo
 
 __all__ = [
     "CompanyFacts",
+    "MetricResult",
     "XbrlClient",
     "XbrlFactPoint",
-    "MetricResult",
-    "revenue_yoy_growth",
-    "revenue_cagr",
-    "gross_margin",
-    "operating_margin",
-    "net_margin",
     "free_cash_flow",
+    "gross_margin",
+    "net_margin",
+    "operating_margin",
+    "revenue_cagr",
+    "revenue_yoy_growth",
 ]

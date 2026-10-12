@@ -32,10 +32,10 @@ class TickerHit:
 class TickerResolver:
     """Lazy cache around the SEC's company_tickers.json file."""
 
-    _instance: "TickerResolver | None" = None
+    _instance: TickerResolver | None = None
 
     @classmethod
-    def shared(cls) -> "TickerResolver":
+    def shared(cls) -> TickerResolver:
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance

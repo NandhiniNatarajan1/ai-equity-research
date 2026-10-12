@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -45,7 +45,7 @@ def _seed(db: Session) -> tuple[Chunk, Chunk]:
         cik=company.cik,
         accession="0001045810-25-000147",
         form_type="10-K",
-        filing_date=datetime(2025, 2, 26, tzinfo=timezone.utc),
+        filing_date=datetime(2025, 2, 26, tzinfo=UTC),
         primary_doc_url="https://example.com/nvda.htm",
         filing_index_url="https://example.com/nvda-index.htm",
     )
