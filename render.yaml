@@ -1,0 +1,69 @@
+# Render.com blueprint — one-click deploy for the backend + MCP server.
+# After pushing to GitHub, create a Blueprint on https://dashboard.render.com
+# pointing at this repo and this file. You'll be asked to fill in the env
+# vars listed below (ANTHROPIC_API_KEY, VOYAGE_API_KEY, DATABASE_URL from
+# Neon, optional LANGSMITH_API_KEY).
+
+services:
+  - type: web
+    name: aer-api
+    runtime: docker
+    repo: https://github.com/CHANGE_ME/ai-equity-research
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: APP_ENV
+        value: prod
+      - key: LOG_LEVEL
+        value: INFO
+      - key: DEMO_MODE
+        value: "true"
+      - key: EMBEDDING_PROVIDER
+        value: voyage
+      - key: EMBEDDING_MODEL
+        value: voyage-3
+      - key: EMBEDDING_DIM
+        value: "1024"
+      - key: ANTHROPIC_MODEL
+        value: claude-sonnet-5-5
+      - key: ANTHROPIC_FAST_MODEL
+        value: claude-haiku-5-5
+      - key: SEC_USER_AGENT
+        value: "AI Equity Research Demo (noreply@example.com)"
+      # ---- Secrets: fill in via the Render dashboard ----
+      - key: DATABASE_URL
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: LANGSMITH_API_KEY
+        sync: false
+      - key: LANGCHAIN_TRACING_V2
+        value: "true"
+      - key: LANGSMITH_PROJECT
+        value: ai-equity-research
+
+  - type: web
+    name: aer-mcp
+    runtime: docker
+    repo: https://github.com/CHANGE_ME/ai-equity-research
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    dockerCommand: python -m app.mcp_server --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: EMBEDDING_PROVIDER
+        value: voyage
+      - key: EMBEDDING_MODEL
+        value: voyage-3
+      - key: EMBEDDING_DIM
+        value: "1024"
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: SEC_USER_AGENT
+        value: "AI Equity Research Demo (noreply@example.com)"

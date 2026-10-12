@@ -127,6 +127,16 @@ def status(ticker: str, db: Session = Depends(get_session)) -> dict[str, Any]:
 @router.post("/{ticker}/ingest")
 def ingest(ticker: str) -> dict[str, Any]:
     """Download + parse + embed the latest 10-K for `ticker` (synchronous)."""
+    from app.core.config import get_settings
+
+    if get_settings().demo_mode:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "On-demand ingestion is disabled in demo mode. Clone the repo "
+                "and run locally to try arbitrary tickers."
+            ),
+        )
     ticker = ticker.upper()
     if TickerResolver.shared().resolve(ticker) is None:
         raise HTTPException(

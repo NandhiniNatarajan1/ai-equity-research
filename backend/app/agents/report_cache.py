@@ -174,6 +174,8 @@ def get_or_generate(
 
     Returns (result, meta) with cache diagnostics.
     """
+    from app.core.config import get_settings
+
     ticker = ticker.upper()
     accession = _latest_accession(ticker)
     if accession is None:
@@ -181,6 +183,15 @@ def get_or_generate(
 
     use_cache = peers is None
     path = _cache_path(ticker, accession)
+
+    # Demo-mode guard: cache-only. A pre-warmed cache file exists for each
+    # seeded ticker; anything else returns a clear 403 instead of spinning
+    # up a $0.10 generation on the maintainer's dime.
+    if get_settings().demo_mode and not (use_cache and path.exists() and not force_refresh):
+        raise LookupError(
+            f"Report for {ticker} is not pre-cached. Fresh report generation is "
+            f"disabled in demo mode — clone the repo and run locally to generate."
+        )
     if use_cache and path.exists() and not force_refresh:
         try:
             blob = json.loads(path.read_text(encoding="utf-8"))

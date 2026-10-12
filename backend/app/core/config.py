@@ -20,6 +20,11 @@ class Settings(BaseSettings):
 
     app_env: Literal["dev", "test", "prod"] = "dev"
     log_level: str = "INFO"
+    # Public-demo guard. When true: /companies/{ticker}/ingest is disabled,
+    # /research/ask only accepts the pre-ingested tickers, /research/report
+    # serves cache hits only (no regeneration). Keeps a hostile visitor from
+    # burning through Anthropic + Voyage credit.
+    demo_mode: bool = False
 
     database_url: str = "postgresql+psycopg://aer:aer@localhost:5432/aer"
 
