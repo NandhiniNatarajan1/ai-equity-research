@@ -26,9 +26,11 @@ from app.core.logging import get_logger
 
 log = get_logger("agent.competitor")
 
-# Default peer set for the MVP. Callers can override via the `peers` kwarg
-# on run_agent (e.g. from `/research/report/{ticker}?peers=NVDA,AMD`).
-DEFAULT_PEERS: list[str] = ["NVDA", "AMD", "INTC"]
+# Default peer pool. The report runs the anchor plus the first non-anchor
+# ticker from this pool (2 total) to keep per-report cost in check. Callers
+# can override via the `peers` kwarg (e.g. ?peers=NVDA,AMD,INTC) to pull in
+# the full set.
+DEFAULT_PEER_POOL: list[str] = ["NVDA", "AMD", "INTC"]
 
 
 COMPARATOR_SYSTEM = """\
@@ -144,8 +146,22 @@ def _per_company_section(pa: PeerAnswer) -> str:
 
 def _run_peer(ticker: str, question: str) -> PeerAnswer:
     log.info("competitor_peer_start", peer=ticker)
-    state = run_sec_filing_agent(ticker, question)
+    # Peer summaries don't need Sonnet — the final comparator does the heavy
+    # cross-company reasoning on the already-cited passages.
+    state = run_sec_filing_agent(ticker, question, fast_composer=True)
     return PeerAnswer(ticker=ticker, sec_state=state)
+
+
+def _default_peers(anchor: str) -> list[str]:
+    """Anchor plus one peer from the pool (2 total). The anchor is always
+    included; the second slot is the first non-anchor ticker in DEFAULT_PEER_POOL.
+    """
+    picks: list[str] = [anchor]
+    for t in DEFAULT_PEER_POOL:
+        if t.upper() != anchor:
+            picks.append(t.upper())
+            break
+    return picks
 
 
 def run_agent(
@@ -158,7 +174,7 @@ def run_agent(
     # Normalize peer list: strip blanks, uppercase, dedupe while preserving order,
     # and ensure the anchor ticker is included so the user sees their own company
     # in the comparison.
-    raw = peers if peers is not None else DEFAULT_PEERS
+    raw = peers if peers is not None else _default_peers(anchor)
     seen: set[str] = set()
     chosen: list[str] = []
     for t in [*raw, anchor]:

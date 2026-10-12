@@ -100,6 +100,10 @@ class AgentState:
     retrieved: list[dict[str, Any]] = field(default_factory=list)
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     answer: AgentAnswer | None = None
+    # When true, use the cheap model for the composer step too. Set by the
+    # Competitor Agent for its per-peer runs — the final cross-peer narrative
+    # is still composed by Sonnet, so the per-peer summaries don't need it.
+    fast_composer: bool = False
 
 
 def _llm(model: str | None = None, *, max_tokens: int = 4096) -> ChatAnthropic:
@@ -246,7 +250,11 @@ def _format_passages_for_llm(retrieved: list[dict[str, Any]]) -> str:
 
 
 def compose_answer(state: AgentState) -> AgentState:
-    llm = _llm()
+    # Use Haiku for peer-level composer runs (Competitor Agent sets fast_composer).
+    # The final cross-peer narrative is still Sonnet. 4096 tokens matches the
+    # Sonnet composer and is still much cheaper per call than Sonnet; 2048 and
+    # 3072 were both clipping mid-string on multi-citation JSON output.
+    llm = _fast_llm(max_tokens=4096) if state.fast_composer else _llm()
     passages = _format_passages_for_llm(state.retrieved)
     if not state.retrieved:
         state.answer = AgentAnswer(
@@ -313,11 +321,11 @@ def build_graph() -> Any:
 _graph = None
 
 
-def run_agent(ticker: str, question: str) -> AgentState:
+def run_agent(ticker: str, question: str, *, fast_composer: bool = False) -> AgentState:
     global _graph
     if _graph is None:
         _graph = build_graph()
-    initial = AgentState(ticker=ticker.upper(), question=question)
+    initial = AgentState(ticker=ticker.upper(), question=question, fast_composer=fast_composer)
     final = _graph.invoke(initial)
     # LangGraph may return a dict-like view; coerce back to AgentState.
     if isinstance(final, dict):
@@ -328,5 +336,6 @@ def run_agent(ticker: str, question: str) -> AgentState:
             retrieved=final.get("retrieved", []),
             tool_calls=final.get("tool_calls", []),
             answer=final.get("answer"),
+            fast_composer=final.get("fast_composer", fast_composer),
         )
     return final  # type: ignore[return-value]

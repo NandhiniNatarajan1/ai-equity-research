@@ -37,18 +37,16 @@ from app.mcp_server.tools import search_filings
 log = get_logger("agent.risk")
 
 
-# Themes commonly disclosed by hardware / semiconductor issuers. The agent
-# scans these as separate retrieval queries so no single theme crowds out
-# the others.
+# Themes commonly disclosed by hardware / semiconductor issuers. 5 broad
+# themes give decent coverage; adding more just inflates input tokens.
+# Callers who need deeper coverage can run the agent with the full question
+# flow instead.
 RISK_THEMES: list[tuple[str, str]] = [
     ("Supply chain / foundry concentration", "foundry concentration Taiwan TSMC single-source wafer manufacturing capacity"),
     ("Customer concentration", "customer concentration dependence on a limited number of customers major OEMs cloud service providers"),
     ("Export controls / geopolitical", "U.S. export controls restrictions China license requirements semiconductor technology"),
-    ("Competition", "intense competition from larger well-capitalized competitors custom silicon hyperscalers"),
-    ("Product transitions / execution", "product transition risk execution new process nodes next-generation architecture roadmap"),
-    ("Macro / cyclicality", "cyclical semiconductor demand macroeconomic conditions downturn inventory correction"),
-    ("Legal / IP / regulation", "intellectual property litigation patent infringement regulatory investigations"),
-    ("Cybersecurity", "cybersecurity breach incident data security operational disruption"),
+    ("Competition / product transition", "intense competition larger competitors custom silicon product transition new process nodes execution risk"),
+    ("Macro / cyclicality / legal", "cyclical semiconductor demand macroeconomic downturn inventory correction intellectual property litigation"),
 ]
 
 RISK_SYSTEM = """\
@@ -56,7 +54,7 @@ You synthesize a structured risk analysis for an investment research report,
 grounded ONLY in the retrieved passages provided to you.
 
 Rules:
-1. Produce 4-7 ranked risk themes, highest severity first. Each theme must be
+1. Produce 3-5 ranked risk themes, highest severity first. Each theme must be
    backed by at least ONE citation into the retrieved passages.
 2. Every citation must use a chunk_id that appears in the retrieved passages.
 3. Quote the passage verbatim (<= 240 characters) in each citation's
@@ -96,15 +94,15 @@ class RiskAgentState:
 
 
 def _llm() -> ChatAnthropic:
+    # Risk ranking only needs coarse high/medium/low severity labels and
+    # structured JSON — Haiku handles both cleanly and costs ~3x less than
+    # Sonnet. 4096 tokens matches other composers; 3072 was clipping the
+    # structured JSON mid-string for 5-theme outputs with multiple citations.
     s = get_settings()
     return ChatAnthropic(
-        model=s.anthropic_model,  # keep Sonnet — nuanced severity ranking
+        model=s.anthropic_fast_model,
         api_key=s.anthropic_api_key.get_secret_value(),
-        # 6144 fits typical 5-7 themes with multiple citations each.
-        # (The earlier 7.4k-char truncation observed with max_tokens=4096
-        # was ~2k tokens of output; the real cause was the prompt + response
-        # together exceeding the budget. 6144 is a comfortable ceiling.)
-        max_tokens=6144,
+        max_tokens=4096,
     )
 
 
@@ -158,9 +156,9 @@ def fetch_risk_passages(state: RiskAgentState) -> RiskAgentState:
     """Scan each known risk theme to ensure broad coverage; dedup by chunk_id."""
     seen: dict[str, dict[str, Any]] = {}
     for _, query in RISK_THEMES:
-        # k=3 keeps the combined input (8 themes × 3 ≈ 24 chunks after dedup)
-        # at a sane size without missing the top-ranked passage per theme.
-        results = search_filings(state.ticker, query, k=3, item_codes=["1A"])
+        # 5 themes × k=2 ≈ 10 chunks after dedup. Enough to ground a ranked
+        # risk list; smaller k keeps input tokens down.
+        results = search_filings(state.ticker, query, k=2, item_codes=["1A"])
         chunk_ids = [r["chunk_id"] for r in results]
         state.tool_calls.append(
             ToolCallRecord(
