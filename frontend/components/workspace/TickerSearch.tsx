@@ -72,9 +72,9 @@ export function TickerSearch({ value, onChange }: Props) {
             </div>
             {selected.latest_filing && (
               <div className="text-[10px] text-mutedFg">
-                {selected.latest_filing.form_type} ·{" "}
+                Annual report ·{" "}
                 {selected.latest_filing.filing_date.slice(0, 10)} ·{" "}
-                {selected.chunk_count.toLocaleString()} chunks
+                {selected.chunk_count.toLocaleString()} passages
               </div>
             )}
           </div>
@@ -134,9 +134,9 @@ export function TickerSearch({ value, onChange }: Props) {
                   <span className="flex min-w-0 flex-col leading-tight">
                     <span className="truncate text-sm text-fg">{c.name}</span>
                     <span className="text-[10px] text-mutedFg">
-                      {c.ingested ? "ingested" : "not ingested"}
+                      {c.ingested ? "Loaded" : "Not loaded"}
                       {c.latest_filing &&
-                        ` · ${c.latest_filing.form_type} ${c.latest_filing.filing_date.slice(0, 10)}`}
+                        ` · Annual report ${c.latest_filing.filing_date.slice(0, 10)}`}
                     </span>
                   </span>
                 </button>

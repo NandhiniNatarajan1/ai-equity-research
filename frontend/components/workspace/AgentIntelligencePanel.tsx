@@ -19,37 +19,37 @@ type AgentKey = "router" | "sec_filing" | "financial" | "risk" | "competitor" | 
 const CATALOG: Record<AgentKey, { name: string; description: string; icon: React.ComponentType<{ className?: string }> }> = {
   router: {
     name: "Research Orchestrator",
-    description: "Classifies the question and routes to the right specialist.",
+    description: "Decides which specialist should answer your question.",
     icon: Scale,
   },
   sec_filing: {
     name: "SEC Filing Agent",
-    description: "Semantic RAG over the most recent 10-K; cites verbatim passages.",
+    description: "Reads the company's annual report (10-K) and finds supporting passages.",
     icon: FileSearch,
   },
   financial: {
-    name: "Financial Analysis Agent",
-    description: "Deterministic Python over SEC XBRL — never computes with the LLM.",
+    name: "Financial Agent",
+    description: "Computes revenue growth, margins, and cash flow from SEC data. No AI math.",
     icon: Calculator,
   },
   risk: {
-    name: "Risk Analysis Agent",
-    description: "Themed structured analysis of Item 1A risk factors.",
+    name: "Risk Agent",
+    description: "Finds and groups the risks the company lists in its annual report.",
     icon: ShieldAlert,
   },
   competitor: {
     name: "Competitor Agent",
-    description: "Runs the same question across peers and compares answers.",
+    description: "Asks the same question of each peer company and compares the answers.",
     icon: Users,
   },
   verification: {
     name: "Verification Agent",
-    description: "Checks every citation chunk_id was returned by a tool call.",
+    description: "Checks every quote actually appears in the real filing.",
     icon: ScrollText,
   },
   report: {
     name: "Report Agent",
-    description: "Fan-out composer that merges specialist outputs into a report.",
+    description: "Combines everyone's findings into a single investor-style report.",
     icon: ScrollText,
   },
 };
@@ -81,11 +81,14 @@ export function AgentIntelligencePanel({
   startedAt,
   result,
   error,
+  scope = "ask",
 }: {
   phase: Phase;
   startedAt: number | null;
   result: AskResponse | null;
   error: string | null;
+  /** `ask` = only Orchestrator + routed specialist + Verification. `report` = all 7. */
+  scope?: "ask" | "report";
 }) {
   const [states, setStates] = useState<Record<AgentKey, AgentState>>(initial);
 
@@ -227,22 +230,42 @@ export function AgentIntelligencePanel({
     }
   }, [phase, startedAt, result, error]);
 
-  const list: AgentKey[] = useMemo(
-    () => ["router", "sec_filing", "financial", "risk", "competitor", "verification", "report"],
-    [],
-  );
+  const list: AgentKey[] = useMemo(() => {
+    if (scope === "report") {
+      return ["router", "sec_filing", "financial", "risk", "competitor", "verification", "report"];
+    }
+    // Ask scope: show Orchestrator + the routed specialist(s) + Verification.
+    // Before the route is known we show BOTH specialists so the user can see
+    // which one lights up; once the route resolves we drop the one that was
+    // skipped. This keeps the rail short and relevant.
+    const routed: AgentKey[] =
+      result?.route === "financial"
+        ? ["financial"]
+        : result?.route === "sec_filing"
+        ? ["sec_filing"]
+        : ["sec_filing", "financial"];
+    return ["router", ...routed, "verification"];
+  }, [scope, result]);
+
+  const phaseLabel: Record<Phase, string> = {
+    idle: "Waiting",
+    routing: "Routing",
+    running: "Running",
+    done: "Done",
+    error: "Error",
+  };
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="min-w-0">
-          <h3 className="text-sm font-semibold">Research Intelligence</h3>
+          <h3 className="text-sm font-semibold">What the agents did</h3>
           <p className="text-xs text-mutedFg">
-            Specialists involved in this run · click a card for details
+            Click a card to see how it worked.
           </p>
         </div>
-        <span className="text-[10px] font-mono uppercase text-mutedFg">
-          phase: {phase}
+        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wider text-mutedFg">
+          {phaseLabel[phase]}
         </span>
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto p-3">
@@ -255,11 +278,6 @@ export function AgentIntelligencePanel({
             {...states[k]}
           />
         ))}
-        <p className="pt-2 text-center text-[10px] text-mutedFg">
-          Risk / Competitor / Report agents fire only on <span className="font-mono">Generate full
-          report</span>. In this workspace, a single question invokes just the orchestrator and the
-          routed specialist.
-        </p>
       </div>
     </div>
   );

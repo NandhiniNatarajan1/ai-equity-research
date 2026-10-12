@@ -1,10 +1,69 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AskResponse, Citation, ChunkDetail, FinancialCitation } from "@/lib/api";
 import { getChunk } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency, formatPercent } from "@/lib/utils";
+
+/** Plain-English label for a 10-K Item code. The short code is kept in parens so
+ *  finance folks still see it. */
+function sectionLabel(itemCode: string, fallbackTitle: string): { friendly: string; code: string } {
+  const map: Record<string, string> = {
+    "1": "Business overview",
+    "1A": "Risk factors",
+    "1B": "Unresolved staff comments",
+    "1C": "Cybersecurity",
+    "2": "Properties",
+    "3": "Legal proceedings",
+    "4": "Mine safety disclosures",
+    "5": "Market for common equity",
+    "6": "Reserved",
+    "7": "Management's discussion",
+    "7A": "Market risk disclosures",
+    "8": "Financial statements",
+    "9": "Changes in accountants",
+    "9A": "Controls and procedures",
+    "9B": "Other information",
+    "9C": "Foreign jurisdiction disclosures",
+    "10": "Directors and governance",
+    "11": "Executive compensation",
+    "12": "Security ownership",
+    "13": "Related transactions",
+    "14": "Principal accountant fees",
+    "15": "Exhibits and schedules",
+    "16": "Form 10-K summary",
+    FULL: "Full annual report",
+  };
+  const friendly = map[itemCode.toUpperCase()] ?? fallbackTitle;
+  return { friendly, code: itemCode.toUpperCase() };
+}
+
+/** Prefix the raw router reason with a plain-English intro of which agent answered. */
+function routeIntro(route: "sec_filing" | "financial"): string {
+  return route === "financial"
+    ? "Answered by the Financial Agent — computes exact numbers from SEC data; no AI math."
+    : "Answered by the SEC Filing Agent — reads filing text and quotes supporting passages.";
+}
+
+/** Close when the user clicks outside `ref` or hits Escape. */
+function useDismiss(ref: React.RefObject<HTMLElement | null>, open: boolean, close: () => void) {
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) close();
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") close();
+    }
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [open, ref, close]);
+}
 
 type Part = string | Citation | FinancialCitation;
 
@@ -33,6 +92,8 @@ function CitationChip({ cit }: { cit: Citation }) {
   const [open, setOpen] = useState(false);
   const [chunk, setChunk] = useState<ChunkDetail | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const ref = useRef<HTMLSpanElement>(null);
+  useDismiss(ref, open, () => setOpen(false));
 
   async function toggle() {
     setOpen((v) => !v);
@@ -46,20 +107,23 @@ function CitationChip({ cit }: { cit: Citation }) {
   }
 
   return (
-    <span className="relative inline-block align-baseline">
+    <span ref={ref} className="relative inline-block align-baseline">
       <button
         type="button"
         onClick={toggle}
         className="mx-0.5 inline-flex items-center rounded border border-accent/40 bg-accent/10 px-1 py-0 text-[10px] font-medium text-accent hover:bg-accent/20"
-        title={`Item ${cit.section_item_code} — ${cit.section_title}`}
+        title={`${sectionLabel(cit.section_item_code, cit.section_title).friendly} (Item ${cit.section_item_code})`}
       >
         {cit.marker}
       </button>
       {open && (
         <span className="absolute left-0 top-full z-30 mt-1 block w-[28rem] max-w-[80vw] rounded-md border border-border bg-surface p-3 text-xs shadow-xl animate-slide-in">
-          <span className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wide text-mutedFg">
+          <span className="mb-1 flex items-center justify-between gap-2 text-[11px] text-mutedFg">
             <span>
-              Item {cit.section_item_code} — {cit.section_title}
+              <span className="font-semibold text-fg">
+                {sectionLabel(cit.section_item_code, cit.section_title).friendly}
+              </span>{" "}
+              <span className="text-mutedFg">(Item {cit.section_item_code})</span>
             </span>
             <a
               href={cit.primary_doc_url}
@@ -67,7 +131,7 @@ function CitationChip({ cit }: { cit: Citation }) {
               rel="noreferrer"
               className="text-accent hover:underline"
             >
-              SEC ↗
+              Open on SEC.gov ↗
             </a>
           </span>
           <blockquote className="border-l-2 border-border pl-2 italic text-fg">
@@ -88,6 +152,8 @@ function CitationChip({ cit }: { cit: Citation }) {
 
 function MetricChip({ cit }: { cit: FinancialCitation }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useDismiss(ref, open, () => setOpen(false));
   const label =
     cit.unit === "pct"
       ? formatPercent(cit.value)
@@ -95,7 +161,7 @@ function MetricChip({ cit }: { cit: FinancialCitation }) {
       ? formatCurrency(cit.value)
       : `${cit.value}`;
   return (
-    <span className="relative inline-block align-baseline">
+    <span ref={ref} className="relative inline-block align-baseline">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -105,15 +171,16 @@ function MetricChip({ cit }: { cit: FinancialCitation }) {
       </button>
       {open && (
         <span className="absolute left-0 top-full z-30 mt-1 block w-[32rem] max-w-[80vw] rounded-md border border-border bg-surface p-3 text-xs shadow-xl animate-slide-in">
-          <span className="mb-1 block text-[10px] uppercase tracking-wide text-mutedFg">
-            {cit.name} · {cit.period_label}
-          </span>
-          <p className="mb-2 text-fg">{cit.narrative}</p>
-          <div className="rounded border border-border bg-surfaceAlt/50 p-2">
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-mutedFg">
-              XBRL inputs
-            </div>
-            <ul className="space-y-0.5 font-mono text-[11px]">
+          <p className="text-sm text-fg">{cit.narrative}</p>
+          <p className="mt-1 text-[11px] text-mutedFg">
+            Computed in Python from exact numbers the company filed with the SEC — not generated
+            by the AI model.
+          </p>
+          <details className="mt-2 rounded border border-border bg-surfaceAlt/50 p-2 text-[11px]">
+            <summary className="cursor-pointer text-mutedFg">
+              Source numbers (SEC XBRL)
+            </summary>
+            <ul className="mt-1 space-y-0.5 font-mono">
               {cit.inputs.map((f, i) => (
                 <li key={i} className="text-mutedFg">
                   <span className="text-fg">{f.concept}</span>{" "}
@@ -122,12 +189,12 @@ function MetricChip({ cit }: { cit: FinancialCitation }) {
                     {f.unit === "USD" ? formatCurrency(f.value) : f.value}
                   </span>{" "}
                   <span className="opacity-70">
-                    ({f.form} {f.accession}, filed {f.filed})
+                    (SEC filing #{f.accession}, filed {f.filed})
                   </span>
                 </li>
               ))}
             </ul>
-          </div>
+          </details>
         </span>
       )}
     </span>
@@ -147,7 +214,7 @@ export function AnswerBubble({ result }: { result: AskResponse }) {
           <Badge variant={result.route === "financial" ? "pos" : "accent"}>
             {result.route === "financial" ? "Financial Agent" : "SEC Filing Agent"}
           </Badge>
-          {result.route_reason && <span className="truncate">{result.route_reason}</span>}
+          <span className="text-mutedFg">{routeIntro(result.route)}</span>
           {result.trace_url && (
             <a
               href={result.trace_url}
@@ -155,7 +222,7 @@ export function AnswerBubble({ result }: { result: AskResponse }) {
               rel="noreferrer"
               className="ml-auto text-accent hover:underline"
             >
-              LangSmith trace ↗
+              Developer trace ↗
             </a>
           )}
         </div>

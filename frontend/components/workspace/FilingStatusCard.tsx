@@ -52,17 +52,26 @@ export function FilingStatusCard({
     <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border border-border bg-surface px-4 py-3 text-sm">
       <div className="flex items-center gap-2">
         <FileText className="size-4 text-mutedFg" />
-        <span className="font-mono text-xs text-mutedFg">LATEST FILING</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-mutedFg">
+          Latest annual report
+        </span>
       </div>
 
       {company?.latest_filing ? (
         <>
-          <span className="font-mono text-sm text-fg">{company.latest_filing.form_type}</span>
+          <span className="text-sm text-fg">
+            {company.latest_filing.form_type === "10-K"
+              ? "Annual report"
+              : company.latest_filing.form_type}{" "}
+            <span className="font-mono text-xs text-mutedFg">
+              ({company.latest_filing.form_type})
+            </span>
+          </span>
           <span className="text-sm text-fg tabnum">
             {company.latest_filing.filing_date.slice(0, 10)}
           </span>
           <span className="text-xs text-mutedFg tabnum">
-            {company.section_count} sections · {company.chunk_count.toLocaleString()} chunks
+            {company.section_count} sections · {company.chunk_count.toLocaleString()} passages
           </span>
           <a
             href={company.latest_filing.primary_doc_url}
@@ -74,7 +83,7 @@ export function FilingStatusCard({
           </a>
         </>
       ) : (
-        <span className="text-sm text-mutedFg">No filing ingested yet.</span>
+        <span className="text-sm text-mutedFg">No annual report loaded yet.</span>
       )}
 
       <Badge

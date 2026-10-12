@@ -91,7 +91,7 @@ export function AgentCard(props: AgentCardProps) {
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-fg">{props.name}</span>
+            <span className="truncate text-sm font-medium text-fg">{props.name}</span>
             <Badge variant={meta.variant}>
               <StatusIcon
                 className={cn("size-3", props.status === "running" && "animate-spin")}
@@ -108,12 +108,13 @@ export function AgentCard(props: AgentCardProps) {
               )}
             />
           </div>
-          <p className="mt-0.5 text-xs text-mutedFg">{props.description}</p>
 
-          {(props.toolCalls != null || props.evidenceCount != null) && (
-            <div className="mt-1.5 flex items-center gap-3 text-[11px] text-mutedFg tabnum">
-              {props.toolCalls != null && <span>{props.toolCalls} tool calls</span>}
+          {/* Secondary line: compact run metadata only. The description
+              lives inside the expanded panel so idle rows stay single-line. */}
+          {(props.toolCalls != null || props.evidenceCount != null || props.traceUrl) && (
+            <div className="mt-1 flex items-center gap-3 text-[11px] text-mutedFg tabnum">
               {props.evidenceCount != null && <span>{props.evidenceCount} passages</span>}
+              {props.toolCalls != null && <span>{props.toolCalls} tool calls</span>}
               {props.traceUrl && (
                 <a
                   href={props.traceUrl}
@@ -136,9 +137,15 @@ export function AgentCard(props: AgentCardProps) {
         </div>
       </button>
 
-      {open && props.details && (
-        <div className="border-t border-border px-3 py-2 text-[11px] text-mutedFg animate-fade-in">
-          {props.details}
+      {open && (
+        <div className="border-t border-border px-3 py-2 text-[11px] text-mutedFg animate-fade-in space-y-2">
+          <div className="text-fg">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-mutedFg">
+              How this works
+            </span>
+            <p className="mt-0.5 text-xs text-mutedFg">{props.description}</p>
+          </div>
+          {props.details && <div className="pt-1">{props.details}</div>}
         </div>
       )}
     </div>

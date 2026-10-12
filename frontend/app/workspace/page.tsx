@@ -3,7 +3,6 @@
 import { Download, FileBarChart, Loader2, Send, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TopBar } from "@/components/shell/TopBar";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -102,7 +101,7 @@ export default function WorkspacePage() {
     <>
       <TopBar
         title="Research Workspace"
-        subtitle="Ask a question about a company's most recent 10-K · every claim is cited to source"
+        subtitle="Ask about the company's business, risks, or financials. Every answer is backed by passages from its latest annual report."
       />
 
       {/* Ticker row */}
@@ -205,9 +204,7 @@ export default function WorkspacePage() {
               </div>
               <div className="flex items-center justify-between text-[10px] text-mutedFg">
                 <span>⌘/Ctrl + Enter to submit</span>
-                <span>
-                  Model split: Sonnet 5.5 (composer) + Haiku 5.5 (planner, router)
-                </span>
+                <span>Every quoted passage comes from an actual SEC filing.</span>
               </div>
             </div>
           </form>
@@ -216,7 +213,7 @@ export default function WorkspacePage() {
         <Separator orientation="vertical" />
 
         {/* Research Intelligence */}
-        <aside className="hidden xl:flex w-[420px] shrink-0 flex-col bg-surface/40">
+        <aside className="hidden xl:flex w-[360px] shrink-0 flex-col bg-surface/40">
           <AgentIntelligencePanel
             phase={phase}
             startedAt={startedAt}
@@ -231,18 +228,22 @@ export default function WorkspacePage() {
 
 function EmptyState({ onPick }: { onPick: (q: string) => void }) {
   return (
-    <div className="mx-auto flex max-w-xl flex-col items-center justify-center gap-4 py-12 text-center animate-fade-in">
+    <div className="mx-auto flex max-w-xl flex-col items-center justify-center gap-5 py-12 text-center animate-fade-in">
       <div className="flex size-10 items-center justify-center rounded-full bg-accent/15 text-accent">
         <Sparkles className="size-5" />
       </div>
       <div>
-        <h2 className="text-base font-semibold">Start a research question</h2>
-        <p className="mt-1 text-xs text-mutedFg">
-          The orchestrator will route your question to the SEC Filing Agent (RAG over 10-K text) or
-          the Financial Agent (deterministic Python over SEC XBRL). Every claim is cited to source.
+        <h2 className="text-base font-semibold">Ask a question about this company</h2>
+        <p className="mx-auto mt-2 max-w-md text-xs leading-relaxed text-mutedFg">
+          This workspace reads a company&apos;s{" "}
+          <span className="font-medium text-fg">annual report (10-K)</span> and answers questions
+          about its{" "}
+          <span className="font-medium text-fg">business, risks, or financials</span>. You&apos;ll
+          get a short answer with the{" "}
+          <span className="font-medium text-fg">exact passages</span> it came from.
         </p>
       </div>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2">
         {SUGGESTIONS.map((s) => (
           <button
             key={s.label}
@@ -254,11 +255,6 @@ function EmptyState({ onPick }: { onPick: (q: string) => void }) {
             <div className="mt-0.5 text-mutedFg line-clamp-2">{s.q}</div>
           </button>
         ))}
-      </div>
-      <div className="mt-4 flex items-center gap-2 text-[10px] text-mutedFg">
-        <Badge variant="muted">router: heuristic + Haiku</Badge>
-        <Badge variant="muted">RAG: pgvector · HNSW</Badge>
-        <Badge variant="muted">XBRL: Company Facts</Badge>
       </div>
     </div>
   );
