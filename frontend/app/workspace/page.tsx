@@ -131,7 +131,7 @@ export default function WorkspacePage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => window.open(`http://localhost:8000/research/report/${ticker}.html`, "_blank")}
+          onClick={() => window.open(`/api/research/report/${ticker}.html`, "_blank")}
           disabled={!isLoaded}
           title={
             isLoaded
@@ -145,7 +145,7 @@ export default function WorkspacePage() {
         <Button
           variant="secondary"
           size="sm"
-          onClick={() => window.open(`http://localhost:8000/research/report/${ticker}/pdf`, "_blank")}
+          onClick={() => window.open(`/api/research/report/${ticker}/pdf`, "_blank")}
           disabled={!isLoaded}
           title={
             isLoaded
