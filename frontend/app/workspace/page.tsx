@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, FileBarChart, Loader2, Send, Sparkles } from "lucide-react";
+import { CloudDownload, Download, FileBarChart, Loader2, Send, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { TopBar } from "@/components/shell/TopBar";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { FilingStatusCard } from "@/components/workspace/FilingStatusCard";
 import { AnswerBubble, QuestionBubble } from "@/components/workspace/MessageBubble";
 import { TickerSearch } from "@/components/workspace/TickerSearch";
 import type { AskResponse, SystemCompany } from "@/lib/api";
-import { askResearch, getSystemStatus } from "@/lib/api";
+import { askResearch, getSystemStatus, ingestCompany } from "@/lib/api";
 
 type Turn =
   | { kind: "question"; ticker: string; question: string }
@@ -40,24 +40,42 @@ const SUGGESTIONS: { label: string; q: string }[] = [
 export default function WorkspacePage() {
   const [ticker, setTicker] = useState<string>("NVDA");
   const [companies, setCompanies] = useState<SystemCompany[]>([]);
+  const [companiesKey, setCompaniesKey] = useState(0);
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [loading, setLoading] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [latestResult, setLatestResult] = useState<AskResponse | null>(null);
   const [latestError, setLatestError] = useState<string | null>(null);
+  const [ingesting, setIngesting] = useState(false);
+  const [ingestError, setIngestError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     getSystemStatus()
       .then((s) => setCompanies(s.companies))
       .catch(() => {});
-  }, []);
+  }, [companiesKey]);
 
   const company = useMemo(
     () => companies.find((c) => c.ticker === ticker) ?? null,
     [companies, ticker],
   );
+  const isLoaded = company?.ingested ?? false;
+
+  async function loadCompany() {
+    if (!ticker || ingesting) return;
+    setIngesting(true);
+    setIngestError(null);
+    try {
+      await ingestCompany(ticker);
+      setCompaniesKey((k) => k + 1);
+    } catch (e) {
+      setIngestError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIngesting(false);
+    }
+  }
 
   const lastTurn = turns[turns.length - 1];
   const phase: "idle" | "routing" | "running" | "done" | "error" = loading
@@ -106,7 +124,7 @@ export default function WorkspacePage() {
 
       {/* Ticker row */}
       <div className="flex flex-wrap items-center gap-3 border-b border-border bg-surface/40 px-5 py-3">
-        <TickerSearch value={ticker} onChange={setTicker} />
+        <TickerSearch value={ticker} onChange={setTicker} reloadKey={companiesKey} />
         <div className="flex-1 min-w-[320px]">
           <FilingStatusCard company={company} />
         </div>
@@ -114,7 +132,12 @@ export default function WorkspacePage() {
           variant="outline"
           size="sm"
           onClick={() => window.open(`http://localhost:8000/research/report/${ticker}.html`, "_blank")}
-          title="Opens the full research report in a new tab · first call ~60s, then cached"
+          disabled={!isLoaded}
+          title={
+            isLoaded
+              ? "Opens the full research report in a new tab · first call ~60s, then cached"
+              : "Load this company first"
+          }
         >
           <FileBarChart className="size-3.5" />
           Open report
@@ -123,12 +146,51 @@ export default function WorkspacePage() {
           variant="secondary"
           size="sm"
           onClick={() => window.open(`http://localhost:8000/research/report/${ticker}/pdf`, "_blank")}
-          title="Download the report as a PDF (WeasyPrint)"
+          disabled={!isLoaded}
+          title={
+            isLoaded
+              ? "Download the report as a PDF"
+              : "Load this company first"
+          }
         >
           <Download className="size-3.5" />
           PDF
         </Button>
       </div>
+
+      {/* Load-this-company CTA (shown when the selected ticker isn't ingested) */}
+      {!isLoaded && ticker && (
+        <div className="flex flex-wrap items-center gap-3 border-b border-border bg-warn/5 px-5 py-3 text-sm">
+          <CloudDownload className="size-4 text-warn" />
+          <div className="flex-1 min-w-[280px]">
+            <div className="text-fg">
+              We haven&apos;t loaded <span className="font-mono text-accent">{ticker}</span>&apos;s
+              annual report yet.
+            </div>
+            <div className="text-xs text-mutedFg">
+              First load takes about <span className="text-fg">1–2 minutes</span>: we download the
+              latest 10-K from SEC EDGAR, split it into sections, and index it for search. You
+              only wait once.
+            </div>
+            {ingestError && (
+              <div className="mt-1 text-xs text-neg">{ingestError}</div>
+            )}
+          </div>
+          <Button onClick={loadCompany} disabled={ingesting}>
+            {ingesting ? (
+              <>
+                <Loader2 className="size-3.5 animate-spin" />
+                Loading… (sit tight)
+              </>
+            ) : (
+              <>
+                <CloudDownload className="size-3.5" />
+                Load this company
+              </>
+            )}
+          </Button>
+        </div>
+      )}
 
       {/* Split-panel body */}
       <div className="flex flex-1 min-h-0">
@@ -195,8 +257,9 @@ export default function WorkspacePage() {
                 />
                 <Button
                   type="submit"
-                  disabled={loading || !question.trim()}
+                  disabled={loading || !question.trim() || !isLoaded}
                   className="self-stretch px-5"
+                  title={!isLoaded ? "Load this company first" : undefined}
                 >
                   {loading ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                   Ask

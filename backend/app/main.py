@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import filings, report, research, system
+from app.api import companies, filings, report, research, system
 from app.core.logging import configure_logging, get_logger
 from app.core.tracing import configure_tracing
 
@@ -39,6 +39,7 @@ app.add_middleware(
 app.include_router(research.router)
 app.include_router(report.router)
 app.include_router(filings.router)
+app.include_router(companies.router)
 app.include_router(system.router)
 
 

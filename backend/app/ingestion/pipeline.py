@@ -13,6 +13,7 @@ from itertools import batched
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.companies.resolver import TickerResolver
 from app.core.logging import get_logger
 from app.db.models import Chunk, ChunkEmbedding, Company, Filing, Section
 from app.db.session import session_scope
@@ -31,12 +32,24 @@ def _parse_date(value: str) -> datetime:
 
 
 def _resolve_company(db: Session, ticker: str) -> Company:
+    """Return the Company row for `ticker`, inserting it if we've never seen it.
+
+    SEC's company_tickers.json is the source of truth for ticker -> CIK + name;
+    we only persist the triple so later queries don't need to re-hit SEC.
+    """
     ticker = ticker.upper()
     company = db.scalar(select(Company).where(Company.ticker == ticker))
-    if company is None:
+    if company is not None:
+        return company
+    hit = TickerResolver.shared().resolve(ticker)
+    if hit is None:
         raise LookupError(
-            f"Company '{ticker}' not seeded. Add it to migrations/0002_seed_companies.py."
+            f"Unknown ticker '{ticker}' — not found in the SEC's public company list."
         )
+    company = Company(cik=hit.cik, ticker=hit.ticker, name=hit.name, sic=None)
+    db.add(company)
+    db.flush()
+    log.info("company_autocreated", ticker=hit.ticker, cik=hit.cik, name=hit.name)
     return company
 
 

@@ -124,3 +124,63 @@ export async function listRuns(limit = 25, ticker?: string): Promise<RunSummary[
   if (!r.ok) throw new Error(`runs fetch failed (${r.status})`);
   return r.json();
 }
+
+export type CompanySearchHit = {
+  ticker: string;
+  cik: string;
+  name: string;
+  loaded: boolean;
+  latest_filing: { accession: string; filing_date: string } | null;
+};
+
+export async function searchCompanies(q: string, limit = 15): Promise<CompanySearchHit[]> {
+  if (!q.trim()) return [];
+  const qs = new URLSearchParams({ q, limit: String(limit) });
+  const r = await fetch(`/api/companies/search?${qs.toString()}`);
+  if (!r.ok) throw new Error(`company search failed (${r.status})`);
+  return r.json();
+}
+
+export type CompanyStatus = {
+  ticker: string;
+  name: string;
+  cik: string;
+  loaded: boolean;
+  section_count: number;
+  chunk_count: number;
+  latest_filing: {
+    accession: string;
+    form_type: string;
+    filing_date: string;
+    primary_doc_url: string;
+  } | null;
+};
+
+export async function getCompanyStatus(ticker: string): Promise<CompanyStatus> {
+  const r = await fetch(`/api/companies/${encodeURIComponent(ticker)}`);
+  if (r.status === 404) {
+    throw new Error(`Unknown ticker '${ticker}'.`);
+  }
+  if (!r.ok) throw new Error(`status failed (${r.status})`);
+  return r.json();
+}
+
+export async function ingestCompany(ticker: string): Promise<{
+  ticker: string;
+  accession?: string;
+  status: string;
+  sections?: number;
+  chunks?: number;
+  embedded?: number;
+  finished_at: string;
+  error?: string;
+}> {
+  const r = await fetch(`/api/companies/${encodeURIComponent(ticker)}/ingest`, {
+    method: "POST",
+  });
+  if (!r.ok) {
+    const detail = await r.text();
+    throw new Error(`ingest failed (${r.status}): ${detail}`);
+  }
+  return r.json();
+}
