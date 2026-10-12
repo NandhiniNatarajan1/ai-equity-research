@@ -1,147 +1,183 @@
 # AI Equity Research Platform
 
-Multi-agent investment research over SEC filings. Enter a ticker and a question,
-get an evidence-backed answer with working citations into the underlying 10-K.
+A multi-agent investment research platform. Pick any public US-listed company,
+ask a question in plain English, and get a cited answer whose every quote
+links back to the exact passage in the company's SEC filing — plus a full
+investor-style research report that fans out six specialist agents in
+parallel and renders to PDF.
 
-> See [PROJECT_BRIEF.md](PROJECT_BRIEF.md) for the full vision. This README
-> tracks the current milestone and how to run it.
+> **Why this exists.** Portfolio project exploring where real engineering
+> rigor meets agentic AI: LangGraph orchestration, model-split cost control,
+> deterministic financial math (never LLM arithmetic), citation-integrity
+> verification that rejects hallucinated sources, and a report cache
+> keyed on SEC accession numbers so repeat views are free.
 
-## Status
+---
 
-**Milestone 3 — Full research report (4 specialist agents + Verification/Report composer).**
-`GET /research/report/{ticker}.html` fans out to **SEC Filing**, **Financial**,
-**Risk** (ranked themed Item 1A analysis), and **Competitor** (cross-ticker
-comparison) agents in parallel, then merges their outputs into a structured,
-print-friendly report (Executive Summary → Business → Financials → Risks →
-Competitive Position → Sources). Opens in a new tab; Ctrl+P exports to PDF.
-UI also ships ingested-ticker status chips, run history, and per-run
-LangSmith trace links.
+## Highlights
 
-**Milestone 2 — Multi-agent (SEC Filing + Financial), router-dispatched.**
-A LangGraph orchestrator classifies each question and routes it to either
-the **SEC Filing Agent** (RAG over 10-K text with verified citations) or
-the **Financial Agent** (deterministic Python over SEC XBRL for growth,
-margins, FCF, etc.). Both agents share retrieval tools over MCP. The
-Financial Agent **never does arithmetic in the LLM** — numbers come from
-`backend/app/financial_tools/calculators.py` with full XBRL provenance
-(concept, accession, filed date) attached to every cited metric.
+- **Multi-agent orchestration** with LangGraph: a router dispatches each
+  question to one of two specialists (SEC Filing or Financial), and the
+  full report fans out four specialists in parallel + a verification +
+  report composer.
+- **Deterministic financial math.** Numbers never come from the LLM.
+  Revenue growth, margins, FCF, CAGR, etc. are pure Python functions
+  over SEC XBRL facts, with full provenance (concept, accession, filed
+  date) attached to every cited metric.
+- **Citation integrity enforced server-side.** The API rejects any
+  answer whose claimed `chunk_id`s weren't actually returned by the MCP
+  retrieval tools during that run, and fuzzy-matches each quoted span
+  against the real chunk text.
+- **Any US-listed company.** Backed by SEC's public `company_tickers.json`
+  (10,445 filers). Click a ticker you've never loaded and the pipeline
+  fetches the 10-K from EDGAR, section-parses it, chunks, embeds, and
+  indexes — in about 90 seconds.
+- **Cost control through model split.** The orchestrator router,
+  planners, narrators, and per-peer composers run on Claude Haiku 5.5
+  (~3× cheaper); nuanced final composition stays on Sonnet 5.5. Report
+  cost dropped from ~$0.30 to ~$0.10 per generation.
+- **Report cache keyed on accession.** New filings auto-invalidate; repeat
+  views of the same report drop from ~60s to ~15ms.
+- **Server-side PDF** via WeasyPrint, with inline SVG sparklines and
+  5-year revenue/margin/FCF bar charts from the already-indexed XBRL.
+- **Observability built in.** LangSmith traces persisted per agent run;
+  `/runs` endpoint and in-app run history surface them.
 
-**Milestone 1 — RAG over 10-Ks for NVDA, AMD, INTC.** Single SEC Filing Agent
-with section-aware retrieval over Postgres + pgvector, exposed as MCP tools.
-Every answer carries verifiable citations; the API refuses answers whose
-citations do not match the tool calls made during the run.
+## Live screenshots
 
-### What's in M1
-
-| Layer | Status | Notes |
-|---|---|---|
-| EDGAR client (rate-limited, cached) | ✅ | `backend/app/ingestion/edgar_client.py` |
-| 10-K section parser (Item-aware) | ✅ | Deduplicates TOC vs. body |
-| Section-aware chunker | ✅ | 800-token target, paragraph-boundary preferred |
-| Embedder (Voyage default, OpenAI fallback) | ✅ | `voyage-3` → 1024-dim vectors |
-| Postgres + pgvector schema | ✅ | Alembic migrations, HNSW index on embeddings |
-| Ingestion CLI | ✅ | `python -m app.ingestion.cli ingest NVDA AMD INTC` |
-| MCP server (`search_filings`, `get_filing_section`) | ✅ | Streamable HTTP on `:8765` |
-| SEC Filing Agent (LangGraph: plan → retrieve → compose) | ✅ | Claude Sonnet 5.5 |
-| Citation-integrity validator | ✅ | Rejects any citation whose chunk wasn't retrieved |
-| FastAPI `/research/ask`, `/chunks/{id}`, `/filings/{ticker}` | ✅ | |
-| Next.js UI with citation chips + passage popovers | ✅ | |
-| LangSmith tracing | ✅ (opt-in via env) | `LANGCHAIN_TRACING_V2=true` + `LANGSMITH_API_KEY` |
-| Eval set (10 questions) | ✅ | Harness in `backend/tests/eval/` |
-| Docker Compose (postgres, api, mcp, web) | ✅ | `infra/docker-compose.yml` |
-
-### Non-negotiables (encoded as tests)
-
-1. **No invented citations.** `backend/app/agents/citation_integrity.py` + `tests/test_citation_integrity.py`.
-2. **Deterministic math seam.** `backend/app/financial_tools/` stub + the agent's
-   system prompt forbids computing ratios from retrieved text. Any question
-   requiring math returns `deferred=true` with a reason.
-3. **EDGAR etiquette.** User-Agent, 8 req/s cap, on-disk cache.
+> Add `docs/workspace.png`, `docs/report.png`, `docs/agents.png` and link
+> them here. (Recommend screen-recording the full flow as a 30-second GIF
+> for the top of this README.)
 
 ## Architecture
 
 ```
-Next.js (web) ──HTTP──> FastAPI (api) ──LangGraph──> SEC Filing Agent
-                                                         │
-                                                         ▼
-                                                 Retrieval tools
-                                             (also exposed via MCP
-                                              server for other agents)
-                                                         │
-                                                         ▼
-                                                   Postgres + pgvector
+                                 ┌────────────────────┐
+   Any US ticker ──> search ──>  │  SEC company_tickers│
+                                 └─────────┬──────────┘
+                                           │ resolve CIK
+                                           ▼
+                                 ┌────────────────────┐
+                                 │   EDGAR pipeline   │  rate-limited, cached
+                                 │  fetch 10-K ─> parse ─> chunk ─> embed
+                                 └─────────┬──────────┘
+                                           ▼
+                                 ┌────────────────────┐
+                                 │ Postgres + pgvector │  HNSW index
+                                 └─────────┬──────────┘
+                                           │
+          ┌────────────────────────────────┼──────────────────────────┐
+          ▼                                ▼                          ▼
+┌───────────────────┐          ┌───────────────────┐       ┌───────────────────┐
+│  LangGraph router │          │   MCP retrieval   │       │  XBRL + yfinance  │
+│  (Haiku 5.5)      │          │   tools           │       │  non-LLM data     │
+└─────┬─────────────┘          └─────────┬─────────┘       └─────────┬─────────┘
+      │                                  │                           │
+      │ ask ─ one specialist             │ reused across every agent │
+      ▼                                  ▼                           ▼
+┌───────────────────┐          ┌───────────────────┐       ┌───────────────────┐
+│  SEC Filing Agent │          │   Risk Agent      │       │ Financial Agent   │
+│  (Sonnet composer)│          │   (Haiku)         │       │ Haiku narrator +  │
+└─────┬─────────────┘          └─────────┬─────────┘       │ Python calculators│
+      │                                  │                 └─────────┬─────────┘
+      ▼                                  ▼                           │
+┌───────────────────┐          ┌───────────────────┐                 │
+│  Verification     │          │ Competitor Agent  │                 │
+│  (citation check) │          │ Haiku per-peer    │                 │
+└─────┬─────────────┘          └─────────┬─────────┘                 │
+      │                                  │                           │
+      └──────────────┬───────────────────┴───────────────────────────┘
+                     ▼
+             ┌───────────────────┐
+             │   Report Agent    │   fan-out composer + accession-keyed cache
+             │   (Sonnet)        │   HTML / PDF via WeasyPrint
+             └───────────────────┘
 ```
 
-Ingestion is a one-shot CLI: fetch 10-Ks from EDGAR → split by Item → chunk →
-embed → upsert.
+## Tech stack
 
-## Prerequisites
+| Layer | Tech |
+|---|---|
+| Agents | **LangGraph** · **Anthropic Claude** (Sonnet 5.5 + Haiku 5.5 model split) |
+| Retrieval | **pgvector** (HNSW index) · **Voyage AI** `voyage-3` embeddings |
+| Tool integration | **Model Context Protocol (MCP)** — retrieval tools shared across agents |
+| Financial data | **SEC Company Facts XBRL** (deterministic Python calculators) · **yfinance** for prices |
+| Observability | **LangSmith** traces per agent run |
+| Backend | **FastAPI** · **SQLAlchemy 2** · **Alembic** · **Pydantic** |
+| Frontend | **Next.js 15** · **React 19** · **Tailwind** · **Recharts** · **next-themes** |
+| Report rendering | **WeasyPrint** (HTML + inline SVG → PDF) |
+| Infra | **Docker Compose** · Postgres with pgvector · Debian-slim images |
+| Testing | **pytest** (41 unit + 12 live eval) |
 
-- Docker Desktop
-- Python 3.12+ (only for running ingestion or tests outside Docker)
-- Node 20 LTS (only for running the frontend outside Docker)
-- API keys:
-  - **Anthropic** (required for the agent)
-  - **Voyage** *or* **OpenAI** (one embedding provider)
-  - **LangSmith** (optional, for traces)
-
-## Quickstart
+## Running it locally
 
 ```powershell
 # 1. Configure env
 Copy-Item .env.example .env
-# edit .env and fill in:
-#   ANTHROPIC_API_KEY=sk-ant-...
-#   VOYAGE_API_KEY=pa-...       (or set EMBEDDING_PROVIDER=openai + OPENAI_API_KEY)
-#   LANGSMITH_API_KEY=lsv2_...  (optional)
+# fill in: ANTHROPIC_API_KEY, VOYAGE_API_KEY (or OPENAI_API_KEY)
+# optional: LANGSMITH_API_KEY
 
 # 2. Bring the stack up
 docker compose -f infra/docker-compose.yml up -d --build
 
-# 3. Run migrations (seeds NVDA, AMD, INTC)
+# 3. Run migrations
 docker compose -f infra/docker-compose.yml exec api alembic upgrade head
 
-# 4. Ingest the three MVP tickers
-docker compose -f infra/docker-compose.yml exec api `
-    python -m app.ingestion.cli NVDA AMD INTC
-
-# 5. Open the dashboard
+# 4. Open the workspace
 start http://localhost:3001
 ```
 
-## Running tests
+The seed migration pre-loads NVDA, AMD, INTC. For any other ticker just
+type it into the search bar and click **Load this company** — the pipeline
+downloads, parses, chunks, embeds, and indexes the latest 10-K in ~90
+seconds.
+
+### Non-negotiables (enforced in code)
+
+1. **No invented citations.** `app/agents/citation_integrity.py` +
+   `tests/test_citation_integrity.py`. Any answer with a `chunk_id` that
+   wasn't returned by an MCP tool during that run is rejected server-side.
+2. **Deterministic math seam.** `app/financial_tools/calculators.py` —
+   pure Python over SEC XBRL. The SEC Filing Agent's system prompt
+   explicitly forbids computing ratios from retrieved text; math-shaped
+   questions route to the Financial Agent.
+3. **EDGAR etiquette.** User-Agent with a contact email, 8 req/s cap,
+   on-disk cache.
+
+## Testing
 
 ```powershell
 cd backend
-.venv\Scripts\python -m pytest -v           # unit tests, no external services
-.venv\Scripts\python -m pytest -m eval -v   # live eval, requires DB + API keys
+.venv\Scripts\python -m pytest -q              # 41 unit tests
+.venv\Scripts\python -m pytest -m eval -v      # 12 live-eval questions
 ```
 
-The unit suite (18 tests) covers the parser, chunker, EDGAR client, and
-citation-integrity validator. The eval suite (10 questions) runs the full
-LangGraph agent against the ingested filings — it costs real tokens.
+Latest eval run (Oct 2026): **12 / 12 passed in ~102 s** at the current
+model split. Zero citation-integrity rejections.
 
-### Eval results (M1 + M2, 2026-10-11)
+## Project history
 
-Model: Claude Sonnet 5.5 • Embeddings: voyage-3 (1024-dim) • pgvector HNSW
+Six milestones shipped as discrete commits — each one adds a specific
+capability and keeps the tests green:
 
-- **12 / 12 passed** in ~112 s
-- 8 SEC Filing Agent questions (NVDA/AMD/INTC qualitative disclosures): all
-  returned verified citations into expected 10-K Item sections. Partial
-  deferrals that still produced citation-backed content are accepted
-- 4 Financial Agent questions (NVDA revenue growth / gross margin, AMD FCF,
-  INTC operating margin): all routed through the deterministic calculators
-  with correct XBRL provenance
-- Zero citation-integrity rejections on the SEC path
-- Zero LLM arithmetic on the financial path — every number comes from
-  Python computation on XBRL facts
-
-Also fix the ingest CLI invocation (no `ingest` subcommand needed):
-
-```powershell
-docker compose -f infra/docker-compose.yml exec api `
-    python -m app.ingestion.cli NVDA AMD INTC
 ```
+M5  feat: search + load any public ticker (not just NVDA/AMD/INTC)
+    feat(ui): simplify Research Intelligence rail + plain-English layer
+    feat(ui): new app shell + Research Workspace
+
+M4  feat(cost): shift Risk + per-peer composer to Haiku; default 2 peers
+    feat(M4): sparklines, server-side PDF, configurable peers
+    feat(M4): report cache + Sonnet/Haiku split (~50% cost cut)
+
+M3  feat(M3): Risk Agent + Competitor Agent + Report composer + UI polish
+
+M2  feat(M2): Financial Agent + router — deterministic math over SEC XBRL
+
+M1  feat: title-based parser fallback + 10/10 eval pass
+    feat: Milestone 1 — RAG-grounded SEC filing agent for NVDA/AMD/INTC
+```
+
+See `PROJECT_BRIEF.md` for the original design brief.
 
 ## Repository layout
 
@@ -149,46 +185,33 @@ docker compose -f infra/docker-compose.yml exec api `
 ai-equity-research/
   backend/
     app/
-      main.py              # FastAPI entrypoint
-      api/                 # research + filings + chunks endpoints
-      agents/              # LangGraph graph, schemas, citation-integrity validator
-      ingestion/           # edgar_client, section_parser, chunker, embedder, pipeline, CLI
-      mcp_server/          # MCP server exposing search_filings / get_filing_section
-      financial_tools/     # STUB — Milestone 2 deterministic calculators
-      db/                  # SQLAlchemy models, session
-      core/                # config, logging, tracing
-    migrations/            # Alembic
-    tests/                 # pytest; eval/ holds the 10-question set
-  frontend/                # Next.js 15 + Tailwind
-  infra/                   # docker-compose, Postgres init
-  PROJECT_BRIEF.md         # original project brief
+      agents/             # LangGraph specialists + orchestrator + verification
+      api/                # FastAPI routers (/research, /companies, /runs, /system)
+      companies/          # SEC ticker resolver
+      financial_tools/    # Deterministic calculators + SEC XBRL client
+      ingestion/          # EDGAR client, section parser, chunker, pipeline, CLI
+      mcp_server/         # MCP server exposing retrieval tools
+      report_assets/      # Inline SVG sparkline + bar chart generators
+      core/, db/          # Config, logging, tracing, SQLAlchemy models
+    migrations/           # Alembic
+    tests/                # 41 unit + 12 live-eval
+  frontend/
+    app/                  # Next.js 15 App Router (7 routes)
+    components/           # shell, workspace, ui primitives
+    lib/                  # typed API client, utils
+  infra/                  # docker-compose, Postgres bootstrap
 ```
 
-## Milestone 4 — shipped
+## Resume blurb
 
-- **Report cache** keyed on `(ticker, latest_filing_accession)` under
-  `./data/reports/`. New ingestion auto-invalidates (new accession = new
-  key). First call ~60s, subsequent calls ~15ms.
-- **Sonnet / Haiku split** — the orchestrator LLM router, SEC Filing
-  planner, Financial Agent narrator, and Competitor Agent comparator all
-  use Claude Haiku 5.5 (~3x cheaper); Sonnet 5.5 reserved for final
-  composition and nuanced ranking (SEC Filing composer, Risk Agent,
-  Report Agent composer). ~50% token-cost reduction per report.
-- **yfinance stock snapshot** (1Y price + 1Y change) and **5-year
-  revenue/margin/FCF history** rendered as inline SVG sparklines and bar
-  charts in the report's new "Fundamentals snapshot" section. No new
-  system deps for the chart rendering (pure Python SVG).
-- **Server-side PDF** via WeasyPrint:
-  `GET /research/report/{ticker}/pdf` returns a browser-downloadable
-  `.pdf`. Falls back to a 503 with a clear message if WeasyPrint deps are
-  missing in the build.
-- **Configurable peer list** on the Report Agent: pass
-  `?peers=NVDA,AMD` to override the default peer set. Custom peer lists
-  bypass the cache.
+> **AI Equity Research Platform** · Python · TypeScript · LangGraph · MCP · FastAPI · Next.js · Postgres + pgvector · Docker
+> - Engineered a multi-agent LangGraph orchestration (SEC Filing, Financial, Risk, Competitor, Verification, Report Composer) over SEC EDGAR filings, exposing retrieval as reusable **MCP tools** and delivering investor-style reports with inline SVG sparklines and server-side PDF export via WeasyPrint.
+> - Enforced **citation integrity** server-side: every answer's `chunk_id`s and quoted spans are intersected with the tool-call record from that run and fuzzy-matched against the source chunk text; failing answers are rejected before persistence.
+> - Built a **deterministic Python layer over SEC XBRL** for revenue growth, margins, FCF, and CAGR; the Financial Agent narrates these pre-computed values with full provenance (XBRL concept, accession, filing date) — the LLM never does arithmetic.
+> - Cut per-report LLM cost ~65% (**\$0.30 → \$0.10**) via a Sonnet/Haiku model split (Haiku for routing, planning, narration, and per-peer composers; Sonnet for final composition and nuanced ranking) plus an accession-keyed **report cache** that drops repeat-view latency from ~60s to ~15ms.
+> - Shipped a dark-first Next.js + Tailwind workspace with chat-style conversation, live agent-execution rail, autocomplete over the full SEC public company universe (10,445 filers), on-demand ingestion, and LangSmith trace links per run.
+> - **41 unit tests + 12 live-eval questions pass** against the running stack; zero citation-integrity rejections on the SEC Filing path, zero LLM arithmetic on the Financial path.
 
-## Milestone 5 (next)
+## License
 
-- Dynamic peer resolution from SIC code / XBRL metadata (vs. the user
-  typing peer tickers manually).
-- Report cache TTL + a periodic refresh hook when new filings land.
-- RSS / 8-K ingestion so reports surface material events between 10-Ks.
+MIT — see [LICENSE](LICENSE). Not investment advice.
